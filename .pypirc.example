@@ -1,0 +1,28 @@
+# Example .pypirc configuration for GitHub Packages
+#
+# Copy this to ~/.pypirc and replace YOUR_GITHUB_PAT with your actual token
+#
+# To create a token:
+# 1. Go to https://github.com/settings/tokens
+# 2. Click "Generate new token (classic)"
+# 3. Select scopes: packages:read and packages:write
+# 4. Copy the token and replace YOUR_GITHUB_PAT below
+
+[distutils]
+index-servers =
+    pypi
+    github
+
+# Default PyPI (for public packages)
+[pypi]
+username = __token__
+password = YOUR_PYPI_TOKEN
+
+# GitHub Packages (for kald-devops)
+[github]
+repository: https://pypi.pkg.github.com/KalderosLLC
+username: __token__
+password: YOUR_GITHUB_PAT
+
+# Usage:
+# pip install kald-devops -i https://pypi.pkg.github.com/KalderosLLC/simple/

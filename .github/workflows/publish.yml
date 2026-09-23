@@ -29,8 +29,7 @@ jobs:
 
       - name: Publish to GitHub Packages
         env:
-          TWINE_REPOSITORY: github
-          TWINE_REPOSITORY_URL: https://github.com/KalderosLLC/kald-devops/releases/download
+          TWINE_REPOSITORY_URL: https://pypi.pkg.github.com/KalderosLLC
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: twine upload dist/* --skip-existing

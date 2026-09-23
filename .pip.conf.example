@@ -1,0 +1,33 @@
+# Example pip configuration for GitHub Packages
+#
+# Copy this to ~/.config/pip/pip.conf (Linux/Mac) or %APPDATA%\pip\pip.ini (Windows)
+# Replace YOUR_GITHUB_PAT with your actual GitHub Personal Access Token
+#
+# To create a token:
+# 1. Go to https://github.com/settings/tokens
+# 2. Click "Generate new token (classic)"
+# 3. Select scopes: packages:read and packages:write
+# 4. Copy the token and update this file
+
+[global]
+# Use GitHub Packages as the default index
+index-url = https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+
+# Trust GitHub Packages host (optional, helps with SSL issues)
+trusted-host =
+    pypi.pkg.github.com
+    files.pythonhosted.org
+
+# Additional options
+timeout = 15
+retries = 3
+
+# Fallback to PyPI for packages not in GitHub Packages
+[install]
+index-url = https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+# Uncomment below to also fallback to PyPI for missing packages
+# extra-index-url = https://pypi.org/simple/
+
+# Usage:
+# After setting this up, simply run:
+# pip install kald-devops

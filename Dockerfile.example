@@ -1,0 +1,69 @@
+# Example Dockerfile for using kald-devops in a container
+#
+# Build with:
+#   docker build --build-arg GITHUB_TOKEN=$GITHUB_TOKEN -t kald-devops-app .
+#
+# Run with:
+#   docker run --env-file .env kald-devops-app kald-devops usage
+#
+
+FROM python:3.11-slim
+
+LABEL org.opencontainers.image.title="Kalderos DevOps"
+LABEL org.opencontainers.image.description="Container with kald-devops utilities"
+LABEL org.opencontainers.image.authors="Kalderos Platform"
+
+# Build argument for GitHub token (required)
+ARG GITHUB_TOKEN
+ARG GITHUB_ORG=KalderosLLC
+
+# Build argument for package version (optional)
+ARG PACKAGE_VERSION=latest
+
+# Fail early if token is not provided
+RUN if [ -z "$GITHUB_TOKEN" ]; then \
+        echo "ERROR: GITHUB_TOKEN build arg is required" >&2; \
+        exit 1; \
+    fi
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user for security
+RUN useradd -m -u 1000 devops
+
+# Set working directory
+WORKDIR /app
+
+# Install kald-devops from GitHub Packages
+RUN pip install --no-cache-dir \
+    kald-devops${PACKAGE_VERSION:+==}${PACKAGE_VERSION} \
+    --index-url https://__token__:${GITHUB_TOKEN}@pypi.pkg.github.com/${GITHUB_ORG}/simple/
+
+# Switch to non-root user
+USER devops
+
+# Health check - verify kald-devops is installed
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD kald-devops usage > /dev/null 2>&1 || exit 1
+
+# Default command - show usage
+ENTRYPOINT ["kald-devops"]
+CMD ["usage"]
+
+# Example usage patterns:
+#
+# Run kald-devops with environment variables:
+#   docker run --env-file .env kald-devops-app list_repositories
+#
+# Run kald-postgres-util:
+#   docker run --env-file .env kald-devops-app postgres_util apply_pr
+#
+# Run with mounted volume for configuration:
+#   docker run -v ~/.kalderos:/app/config kald-devops-app build_pipelines
+#
+# Run interactively:
+#   docker run -it kald-devops-app /bin/bash
