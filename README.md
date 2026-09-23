@@ -93,27 +93,92 @@ The repository includes GitHub Actions workflows for each major operation:
 
 ## Development
 
+### Local Setup
+
+Clone the repository and install in editable mode:
+
+```bash
+git clone https://github.com/KalderosLLC/kald-devops.git
+cd kald-devops
+pip install -e .
+```
+
+This installs the package in "editable" mode, so changes to source code are immediately reflected without reinstalling.
+
+### Develop & Test Locally
+
+Edit source files in `src/kald_devops/`:
+- `devops.py` - Main devops CLI
+- `postgres_util.py` - PostgreSQL utilities
+- `sqlserver_util.py` - SQL Server utilities
+- `__init__.py` - Package metadata and version
+
+Test your changes immediately:
+
+```bash
+# Test main CLI
+kald-devops --help
+kald-devops usage
+
+# Test PostgreSQL utilities
+kald-postgres-util --help
+
+# Test SQL Server utilities
+kald-sqlserver-util --help
+```
+
 ### Running Tests
 
 ```bash
 python -m pytest tests/
 ```
 
-### Building the Package
+### Building a Local Wheel
+
+Build a wheel matching what gets published:
 
 ```bash
 pip install build
 python -m build --wheel
 ```
 
+The wheel is created in `dist/kald_devops-VERSION-py3-none-any.whl`
+
 ## Publishing
 
-The package is automatically published to GitHub Packages on new releases. Manual publishing:
+### Automatic Publishing
+
+The package is automatically published to GitHub Pages on tag pushes:
+
+1. Update version in `pyproject.toml`:
+   ```toml
+   version = "0.1.3"
+   ```
+
+2. Commit and create a tag:
+   ```bash
+   git add pyproject.toml
+   git commit -m "Release v0.1.3"
+   git tag v0.1.3
+   git push origin main
+   git push origin v0.1.3
+   ```
+
+3. GitHub Actions automatically:
+   - Builds the wheel
+   - Creates a GitHub Release with the wheel as an asset
+   - Publishes to GitHub Pages PyPI index at `https://kalderosllc.github.io/kald-devops/simple/`
+
+### Verifying Published Package
+
+After publishing, verify the package is available:
 
 ```bash
-pip install twine
-python -m build
-twine upload --repository github dist/*
+# Check available versions
+pip index versions kald-devops --index-url https://kalderosllc.github.io/kald-devops/simple/
+
+# Install specific version
+pip install kald-devops==0.1.3 --index-url https://kalderosllc.github.io/kald-devops/simple/
 ```
 
 ## Environment Variables
