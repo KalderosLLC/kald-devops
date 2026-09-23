@@ -1,0 +1,36 @@
+name: Apply Flyway
+
+on:
+  workflow_dispatch:
+    inputs:
+      environments:
+        description: 'Comma-delimited target environments (e.g., Stage,Prod)'
+        required: true
+        type: string
+      branch_or_tag:
+        description: 'Semver tag (e.g., v1.21.0) or branch name (default: main)'
+        required: false
+        default: 'main'
+        type: string
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Apply Flyway
+        env:
+          ENVIRONMENTS: ${{ inputs.environments }}
+          BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: kald-devops apply_flyway -v

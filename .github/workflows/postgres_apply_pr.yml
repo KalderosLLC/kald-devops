@@ -1,0 +1,54 @@
+name: PostgreSQL Apply PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - qa
+          - stage
+          - prod
+      db_host:
+        description: 'Database host (optional, uses environment variable if not specified)'
+        required: false
+        type: string
+      db_user:
+        description: 'Database user (optional, uses environment variable if not specified)'
+        required: false
+        type: string
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Apply PostgreSQL PR
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+          DB_HOST: ${{ inputs.db_host || secrets[format('POSTGRES_{0}_HOST', inputs.environment)] }}
+          DB_USER: ${{ inputs.db_user || secrets[format('POSTGRES_{0}_USER', inputs.environment)] }}
+          DB_PASSWORD: ${{ secrets[format('POSTGRES_{0}_PASSWORD', inputs.environment)] }}
+        run: kald-postgres-util apply_pr -v
+
+      - name: Notify Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'PostgreSQL apply_pr for ${{ inputs.environment }} - ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true

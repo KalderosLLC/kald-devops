@@ -1,0 +1,46 @@
+name: Tag Repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag name to create (e.g., v1.21.0-rc)'
+        required: true
+        type: string
+      repositories:
+        description: 'Comma-separated repository paths (e.g., KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway)'
+        required: true
+        type: string
+      branch:
+        description: 'Source branch to tag (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      pdg_tag_or_branch:
+        description: 'Tag or branch for phoenix-data-gateway (default: same as branch)'
+        required: false
+        type: string
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Tag Repository
+        env:
+          TAG: ${{ inputs.tag }}
+          REPOSITORIES: ${{ inputs.repositories }}
+          BRANCH: ${{ inputs.branch }}
+          PDG_TAG_OR_BRANCH: ${{ inputs.pdg_tag_or_branch || inputs.branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: kald-devops tag_repository -v

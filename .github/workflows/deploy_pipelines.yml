@@ -1,0 +1,46 @@
+name: Deploy Pipelines
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipelines:
+        description: 'Comma-delimited pipeline IDs or repository paths (e.g., KalderosLLC/phoenix)'
+        required: true
+        type: string
+      environments:
+        description: 'Comma-delimited target environments (e.g., Stage,Prod)'
+        required: true
+        type: string
+      branch_or_tag:
+        description: 'Semver tag (e.g., v1.21.0) or branch name to deploy'
+        required: true
+        type: string
+      force_redeploy:
+        description: 'Force redeploy even if already deployed'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Deploy pipelines
+        env:
+          PIPELINES: ${{ inputs.pipelines }}
+          ENVIRONMENTS: ${{ inputs.environments }}
+          BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
+          FORCE_REDEPLOY: ${{ inputs.force_redeploy }}
+          AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
+        run: kald-devops deploy_pipelines -v

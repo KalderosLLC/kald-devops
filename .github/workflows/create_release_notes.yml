@@ -1,0 +1,35 @@
+name: Create Release Notes
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'Repository path (e.g., KalderosLLC/phoenix)'
+        required: true
+        type: string
+      tag:
+        description: 'Tag name to create release notes for'
+        required: true
+        type: string
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Create Release Notes
+        env:
+          REPOSITORY: ${{ inputs.repository }}
+          TAG: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: kald-devops create_release_notes -v

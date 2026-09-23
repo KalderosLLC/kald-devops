@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kald-devops"
+version = "0.1.0"
+description = "Kalderos DevOps utilities for managing Phoenix pipelines, GitHub workflows, and database utilities"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Kalderos", email = "platform@kalderos.com"}
+]
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.28.0",
+    "prettytable>=3.0.0",
+    "slack-sdk>=3.19.0",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/KalderosLLC/kald-devops"
+Repository = "https://github.com/KalderosLLC/kald-devops"
+Issues = "https://github.com/KalderosLLC/kald-devops/issues"
+
+[project.scripts]
+kald-devops = "kald_devops.devops:main"
+kald-postgres-util = "kald_devops.postgres_util:main"
+kald-sqlserver-util = "kald_devops.sqlserver_util:main"
+
+[tool.setuptools]
+packages = ["kald_devops"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+kald_devops = ["py.typed"]

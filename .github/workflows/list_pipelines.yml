@@ -1,0 +1,44 @@
+name: List Pipelines
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipelines:
+        description: 'Comma-delimited pipeline IDs or repository paths (e.g., KalderosLLC/phoenix)'
+        required: true
+        type: string
+      environments:
+        description: 'Comma-delimited environments to filter (optional)'
+        required: false
+        type: string
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: List Pipelines
+        env:
+          PIPELINES: ${{ inputs.pipelines }}
+          ENVIRONMENTS: ${{ inputs.environments }}
+          AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
+        run: kald-devops list_pipelines -v
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pipeline-list
+          path: /tmp/pipeline-list.*
+          retention-days: 30
+        continue-on-error: true

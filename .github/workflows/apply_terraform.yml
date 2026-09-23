@@ -1,0 +1,35 @@
+name: Apply Terraform
+
+on:
+  workflow_dispatch:
+    inputs:
+      environments:
+        description: 'Comma-delimited target environments (e.g., Stage,Prod)'
+        required: true
+        type: string
+      pr:
+        description: 'Pull request number (defaults to last merged PR on main)'
+        required: false
+        type: string
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Apply Terraform
+        env:
+          ENVIRONMENTS: ${{ inputs.environments }}
+          PR: ${{ inputs.pr }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: kald-devops apply_terraform -v

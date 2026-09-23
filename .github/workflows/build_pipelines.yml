@@ -1,0 +1,42 @@
+name: Build Pipelines
+
+on:
+  workflow_dispatch:
+    inputs:
+      pipelines:
+        description: 'Comma-delimited pipeline IDs or repository paths (e.g., KalderosLLC/phoenix)'
+        required: true
+        type: string
+      branch_or_tag:
+        description: 'Semver tag (e.g., v1.21.0) or branch name (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      force_rebuild:
+        description: 'Force rebuild even if artifact exists'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: |
+          pip install -e .
+          pip install requests prettytable slack-sdk
+
+      - name: Build pipelines
+        env:
+          PIPELINES: ${{ inputs.pipelines }}
+          BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
+        run: kald-devops build_pipelines -v
