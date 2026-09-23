@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kald-devops"
-version = "0.1.1"
+version = "0.1.2"
 description = "Kalderos DevOps utilities for managing Phoenix pipelines, GitHub workflows, and database utilities"
 readme = "README.md"
 license = {text = "MIT"}

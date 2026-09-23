@@ -82,11 +82,13 @@ Create or edit `~/.config/pip/pip.conf`:
 
 ```ini
 [install]
-index-url = https://KalderosLLC.github.io/kald-devops/simple/
+extra-index-url = https://kalderosllc.github.io/kald-devops/simple/
 
 [global]
-index-url = https://KalderosLLC.github.io/kald-devops/simple/
+extra-index-url = https://kalderosllc.github.io/kald-devops/simple/
 ```
+
+This allows pip to search PyPI first for common packages, then fall back to kald-devops.
 
 Then install:
 ```bash
