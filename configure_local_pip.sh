@@ -13,7 +13,7 @@
 
 set -e
 
-GITHUB_ORG="KalderosLLC"
+GITHUB_ORG="kalderosllc"
 REPO_NAME="kald-devops"
 INDEX_URL="https://${GITHUB_ORG}.github.io/${REPO_NAME}/simple/"
 PIP_CONFIG_DIR="$HOME/.config/pip"
