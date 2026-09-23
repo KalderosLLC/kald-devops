@@ -92,7 +92,7 @@ echo ""
 # Optional uninstall instructions
 echo -e "${YELLOW}To revert this configuration:${NC}"
 echo "  rm $PIP_CONFIG_FILE"
-if [ -f "${PIP_CONFIG_FILE}.backup."* ]; then
+if ls "${PIP_CONFIG_FILE}".backup.* 1> /dev/null 2>&1; then
     echo "  Or restore from backup: cp ${PIP_CONFIG_FILE}.backup.* $PIP_CONFIG_FILE"
 fi
 echo ""
