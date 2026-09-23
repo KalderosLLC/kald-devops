@@ -35,3 +35,27 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate PyPI Simple Index
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          mkdir -p docs/simple/kald-devops
+          VERSION=${GITHUB_REF#refs/tags/}
+          cat > docs/simple/kald-devops/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><title>Links for kald-devops</title></head>
+          <body>
+          <h1>Links for kald-devops</h1>
+          EOF
+          # Add link to the wheel from the release
+          echo "<a href=\"https://github.com/KalderosLLC/kald-devops/releases/download/${VERSION}/kald_devops-${VERSION#v}-py3-none-any.whl\">kald_devops-${VERSION#v}-py3-none-any.whl</a>" >> docs/simple/kald-devops/index.html
+          echo "</body></html>" >> docs/simple/kald-devops/index.html
+          cat docs/simple/kald-devops/index.html
+
+      - name: Deploy PyPI Index to GitHub Pages
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
