@@ -1,0 +1,17 @@
+# Requirements file for installing from GitHub Packages
+#
+# Usage:
+# pip install -r requirements-github.txt
+#
+# Or with a token:
+# pip install -r requirements-github.txt \
+#   --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+
+# Latest version from GitHub Packages
+kald-devops
+
+# Or pin to a specific version:
+# kald-devops==0.1.0
+
+# Or allow a range:
+# kald-devops>=0.1.0,<1.0.0

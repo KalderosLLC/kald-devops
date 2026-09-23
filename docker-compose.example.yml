@@ -1,0 +1,140 @@
+# Example docker-compose configuration for kald-devops
+#
+# Usage:
+#   1. Copy this to docker-compose.yml
+#   2. Update GITHUB_TOKEN and other environment variables
+#   3. Run: docker-compose up --build
+#
+
+version: '3.8'
+
+services:
+  kald-devops:
+    build:
+      context: .
+      dockerfile: Dockerfile.example
+      args:
+        GITHUB_TOKEN: ${GITHUB_TOKEN}
+        GITHUB_ORG: KalderosLLC
+        PACKAGE_VERSION: "0.1.0"  # Leave empty for latest
+
+    image: kald-devops:latest
+    container_name: kald-devops-runner
+
+    # Environment variables for the CLI
+    environment:
+      # Azure DevOps
+      AZURE_DEVOPS_EXT_PAT: ${AZURE_DEVOPS_EXT_PAT}
+
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN}
+
+      # PostgreSQL (for postgres_util)
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+      # Slack (optional, for notifications)
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
+      SLACK_CHANNEL: ${SLACK_CHANNEL}
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+    # Volume mounts for persistent data/config
+    volumes:
+      # Mount local config directory
+      - ~/.kalderos:/home/devops/.kalderos:ro
+      # Mount output directory for results
+      - ./output:/app/output
+
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+
+    # Keep container running (useful for interactive debugging)
+    stdin_open: true
+    tty: true
+
+    # Restart policy
+    restart: unless-stopped
+
+  # Optional: PostgreSQL service for database operations
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres-devops
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-devops}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    # Only start if needed
+    profiles:
+      - with-db
+
+volumes:
+  postgres_data:
+
+# Environment file (.env)
+#
+# Copy this content to .env file in the same directory:
+#
+# # GitHub
+# GITHUB_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# # Azure DevOps
+# AZURE_DEVOPS_EXT_PAT=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# # PostgreSQL
+# POSTGRES_HOST=postgres
+# POSTGRES_PORT=5432
+# POSTGRES_USER=devops_user
+# POSTGRES_PASSWORD=secure_password
+# POSTGRES_DB=devops_db
+#
+# # Slack (optional)
+# SLACK_BOT_TOKEN=xoxb-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# SLACK_CHANNEL=C1234567890
+#
+# # Logging
+# LOG_LEVEL=INFO
+#
+
+# Usage examples:
+#
+# List repositories:
+#   docker-compose run kald-devops list_repositories
+#
+# Build pipelines:
+#   docker-compose run --env PIPELINES="123,456" kald-devops build_pipelines
+#
+# Deploy pipelines:
+#   docker-compose run \
+#     --env PIPELINES="phoenix" \
+#     --env ENVIRONMENTS="Stage,Prod" \
+#     --env BRANCH_OR_TAG="v1.0.0" \
+#     kald-devops deploy_pipelines
+#
+# PostgreSQL operations (with -d postgres profile):
+#   docker-compose --profile with-db run kald-devops postgres_util apply_pr
+#
+# Interactive bash session:
+#   docker-compose run kald-devops /bin/bash
+#
+# View logs:
+#   docker-compose logs -f kald-devops
+#
+# Cleanup:
+#   docker-compose down --volumes
