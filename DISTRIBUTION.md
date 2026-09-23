@@ -9,12 +9,13 @@ This document explains how the `kald-devops` package is built, published, and in
 ### 1. What Gets Built
 
 When you push code or create a tag, the `publish.yml` workflow:
-- **Builds the Python package** using `python -m build`
-- **Produces two artifacts:**
+- **Builds the Python package** using `python -m build --wheel`
+- **Produces a single artifact (wheel only):**
   - `kald_devops-0.1.0-py3-none-any.whl` (binary wheel)
-  - `kald_devops-0.1.0.tar.gz` (source distribution)
 
-These are located in the `dist/` directory after the build step.
+This is located in the `dist/` directory after the build step.
+
+**Why wheels only?** Wheels are pre-built binaries that install faster and more reliably than source distributions.
 
 ### 2. Where It Publishes
 
@@ -316,7 +317,7 @@ This installs the package in editable mode, so changes to the source code are im
 
 | Aspect | Details |
 |--------|---------|
-| **Artifact Type** | Python wheel (binary) + source distribution |
+| **Artifact Type** | Python wheel (binary only) |
 | **Repository** | GitHub Packages (PyPI-compatible) |
 | **URL** | `https://pypi.pkg.github.com/KalderosLLC` |
 | **Authentication** | GitHub Personal Access Token with `packages:read` |

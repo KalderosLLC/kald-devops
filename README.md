@@ -103,7 +103,7 @@ python -m pytest tests/
 
 ```bash
 pip install build
-python -m build
+python -m build --wheel
 ```
 
 ## Publishing
