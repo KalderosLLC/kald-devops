@@ -58,11 +58,15 @@ kald-postgres-util [-v] <subcommand>
 
 ### kald-sqlserver-util
 
-SQL Server database utilities and operations.
+SQL Server database utilities and operations. Requires `pyodbc` for database connectivity.
 
 ```bash
-kald-sqlserver-util [-v] <subcommand>
+kald-sqlserver-util [--log-level {DEBUG|INFO|WARNING|ERROR|CRITICAL}] [--json] <subcommand>
 ```
+
+**Subcommands:**
+- `connect` - Validate connection to a SQL Server database (reads DB_SERVER, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_DRIVER from environment)
+- `auth` - Display database role memberships as formatted tables or JSON
 
 ## Architecture
 
@@ -90,6 +94,7 @@ The repository includes GitHub Actions workflows for each major operation:
 - `requests`
 - `prettytable`
 - `slack-sdk`
+- `pyodbc` (optional, only needed for `kald-sqlserver-util`)
 
 ## Development
 
