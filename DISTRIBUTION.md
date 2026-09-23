@@ -19,12 +19,17 @@ This is located in the `dist/` directory after the build step.
 
 ### 2. Where It Publishes
 
-**GitHub Packages Registry** (PyPI-compatible)
-- **Repository URL:** `https://pypi.pkg.github.com/KalderosLLC`
-- **Package Name:** `kald-devops`
-- **Scope:** Organization-scoped (`KalderosLLC`)
+**Two locations:**
 
-This is an organizational artifact repository that requires authentication to access.
+1. **GitHub Releases** (Direct Download)
+   - **URL:** `https://github.com/KalderosLLC/kald-devops/releases`
+   - **Package:** Wheel attached to each release
+   - **Format:** `kald_devops-0.1.0-py3-none-any.whl`
+
+2. **GitHub Pages** (PyPI-Compatible Index)
+   - **URL:** `https://KalderosLLC.github.io/kald-devops/simple/`
+   - **Purpose:** Enables `pip install` and `pip install --upgrade`
+   - **Authentication:** None required (public)
 
 ### 3. Publication Triggers
 
@@ -54,81 +59,73 @@ git push
 
 ### Prerequisites
 
-A GitHub Personal Access Token (PAT) with at least:
-- `packages:read` scope (to install)
-- `packages:write` scope (to publish)
+**None!** The GitHub Pages index is public and requires no authentication.
 
-**Create a token:** https://github.com/settings/tokens
+### Option 1: Automated Setup (Recommended)
 
-### Option 1: One-Time Install with Token (Simplest)
+Run the setup script:
 
 ```bash
-pip install kald-devops \
-  --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+./configure_local_pip.sh
 ```
 
-Replace `YOUR_GITHUB_PAT` with your actual token.
+This creates `~/.config/pip/pip.conf` automatically.
 
-### Option 2: Persistent Configuration (Recommended)
-
-Create or edit `~/.pypirc`:
-
-```ini
-[distutils]
-index-servers =
-    pypi
-    github
-
-[github]
-repository: https://pypi.pkg.github.com/KalderosLLC
-username: __token__
-password: YOUR_GITHUB_PAT
-```
-
-Then install using:
-```bash
-pip install kald-devops -i https://pypi.pkg.github.com/KalderosLLC/simple/
-```
-
-Or as a default index in `~/.config/pip/pip.conf`:
-
-```ini
-[global]
-index-url = https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
-```
-
-Then simply:
+Then install:
 ```bash
 pip install kald-devops
 ```
 
-### Option 3: Environment Variables (CI/CD Friendly)
+### Option 2: Manual Configuration
 
-Set environment variables:
-```bash
-export GITHUB_TOKEN="YOUR_GITHUB_PAT"
+Create or edit `~/.config/pip/pip.conf`:
+
+```ini
+[install]
+index-url = https://KalderosLLC.github.io/kald-devops/simple/
+
+[global]
+index-url = https://KalderosLLC.github.io/kald-devops/simple/
 ```
 
-Then create a pip config or use in scripts:
+Then install:
+```bash
+pip install kald-devops
+```
+
+### Option 3: One-Time Install (No Configuration)
+
 ```bash
 pip install kald-devops \
-  --index-url https://__token__:${GITHUB_TOKEN}@pypi.pkg.github.com/KalderosLLC/simple/
+  --index-url https://KalderosLLC.github.io/kald-devops/simple/
 ```
 
-### Option 4: Docker / Container Setup
+### Option 4: Via Requirements File
+
+Create `requirements.txt`:
+```txt
+-i https://KalderosLLC.github.io/kald-devops/simple/
+kald-devops
+```
+
+Then:
+```bash
+pip install -r requirements.txt
+```
+
+### Option 5: Docker / Container Setup
 
 In a `Dockerfile`:
 ```dockerfile
 FROM python:3.11-slim
 
-ARG GITHUB_TOKEN
 RUN pip install kald-devops \
-  --index-url https://__token__:${GITHUB_TOKEN}@pypi.pkg.github.com/KalderosLLC/simple/
+  --index-url https://KalderosLLC.github.io/kald-devops/simple/
 ```
 
-Build with:
+Build:
 ```bash
-docker build --build-arg GITHUB_TOKEN=$GITHUB_TOKEN -t my-app .
+docker build -t my-app .
 ```
 
 ---
@@ -151,29 +148,31 @@ kald-sqlserver-util --help
 
 ## Troubleshooting
 
-### "401 Unauthorized" Error
+### "Index not available yet"
 
-**Cause:** Invalid or expired GitHub token
+**Cause:** No releases published yet or GitHub Pages not enabled
 
 **Solution:**
 ```bash
-# Create a new token: https://github.com/settings/tokens
-# Verify token has packages:read scope
-# Update your pip config with the new token
+# Wait for the first release to be published
+# GitHub Pages is auto-enabled; may take 1-2 minutes to activate
+
+# Check if index is available
+curl https://KalderosLLC.github.io/kald-devops/simple/kald-devops/
 ```
 
 ### "Package not found"
 
-**Cause:** Package hasn't been published yet or version mismatch
+**Cause:** Package hasn't been released yet or wrong index URL
 
 **Solution:**
 ```bash
-# Check if package is available on GitHub Packages
-pip index versions kald-devops \
-  --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+# Check available versions
+pip index versions kald-devops
 
-# View available versions
-pip search kald-devops  # (limited search)
+# Verify index URL is correct
+echo $PYTHONPATH
+cat ~/.config/pip/pip.conf
 ```
 
 ### SSL Certificate Issues
@@ -183,21 +182,29 @@ pip search kald-devops  # (limited search)
 **Solution:**
 ```bash
 # Temporarily disable SSL verification (NOT recommended for production)
-pip install kald-devops --trusted-host pypi.pkg.github.com
+pip install kald-devops --trusted-host github.com
 
 # OR: Add corporate certificate to pip trust store
 pip install --cert /path/to/cert.pem kald-devops
 ```
 
-### "Requirement already satisfied"
+### "Requirement already satisfied" when upgrading
 
-**Cause:** Package already installed from different source
+**Cause:** Version not newer than installed
 
 **Solution:**
 ```bash
-# Force reinstall from GitHub Packages
-pip install --upgrade --force-reinstall kald-devops \
-  --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+# Force reinstall latest
+pip install --upgrade --force-reinstall kald-devops
+```
+
+### Reset pip configuration
+
+**To revert to default pip behavior:**
+```bash
+rm ~/.config/pip/pip.conf
+# Or restore from backup
+cp ~/.config/pip/pip.conf.backup.* ~/.config/pip/pip.conf
 ```
 
 ---
@@ -318,9 +325,12 @@ This installs the package in editable mode, so changes to the source code are im
 | Aspect | Details |
 |--------|---------|
 | **Artifact Type** | Python wheel (binary only) |
-| **Repository** | GitHub Packages (PyPI-compatible) |
-| **URL** | `https://pypi.pkg.github.com/KalderosLLC` |
-| **Authentication** | GitHub Personal Access Token with `packages:read` |
-| **Trigger** | Push to main, or tag creation |
+| **Release Location** | GitHub Releases |
+| **PyPI Index** | GitHub Pages: `https://KalderosLLC.github.io/kald-devops/simple/` |
+| **Authentication** | None (public index) |
+| **Setup Script** | Run `./configure_local_pip.sh` |
+| **Installation** | `pip install kald-devops` |
+| **Upgrade** | `pip install --upgrade kald-devops` |
+| **Trigger** | Tag creation (e.g., `git tag v0.2.0`) |
 | **Version Source** | `pyproject.toml` |
 | **CLI Entry Points** | `kald-devops`, `kald-postgres-util`, `kald-sqlserver-util` |

@@ -174,6 +174,28 @@ gh release list --repo $REPO
 
 ---
 
+## Configure Local Pip Installation
+
+After the repository is set up, configure pip locally to install kald-devops:
+
+```bash
+./configure_local_pip.sh
+```
+
+This script:
+- Creates `~/.config/pip/pip.conf`
+- Points pip to the GitHub Pages PyPI index
+- Enables automatic upgrades
+- Backs up existing config
+
+Then users can simply:
+```bash
+pip install kald-devops
+pip install --upgrade kald-devops
+```
+
+---
+
 ## Adding Secrets (If Needed)
 
 Add secrets for workflow operations:

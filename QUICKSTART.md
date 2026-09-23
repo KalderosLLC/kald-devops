@@ -2,83 +2,35 @@
 
 Get `kald-devops` installed and running in minutes.
 
-## 1. Get a GitHub Personal Access Token
-
-Create a token at: https://github.com/settings/tokens
-
-**Required scopes:**
-- ✅ `packages:read` - to install the package
-- ✅ `packages:write` - to publish (if you publish releases)
-
-**Save your token somewhere safe** — you'll use it for authentication.
-
----
-
-## 2. Choose Your Installation Method
-
-### Option A: Automated Setup (Recommended)
+## 1. Configure Local Pip (One-Time Setup)
 
 Run the setup script:
 
 ```bash
-./setup_local_install.sh
+./configure_local_pip.sh
 ```
 
-Follow the prompts to:
-1. Enter your GitHub token
-2. Configure pip automatically
-3. Optionally install the package
+This script:
+1. Creates `~/.config/pip/pip.conf`
+2. Points pip to the GitHub Pages PyPI index
+3. Enables automatic upgrades with `pip install --upgrade`
+4. Backs up your existing config (if any)
 
 ---
 
-### Option B: Manual Configuration
+## 2. Install kald-devops
 
-Create `~/.config/pip/pip.conf`:
-
-```ini
-[global]
-index-url = https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
-```
-
-Replace `YOUR_GITHUB_PAT` with your actual token.
-
-Then install:
+After running the setup script:
 
 ```bash
+# Install latest version
 pip install kald-devops
-```
 
----
+# Upgrade to latest anytime
+pip install --upgrade kald-devops
 
-### Option C: One-Time Install (No Configuration)
-
-```bash
-pip install kald-devops \
-  --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
-```
-
----
-
-### Option D: Docker
-
-Build the image with your token:
-
-```bash
-docker build \
-  --build-arg GITHUB_TOKEN=$GITHUB_TOKEN \
-  -f Dockerfile.example \
-  -t kald-devops:latest \
-  .
-```
-
-Run a command:
-
-```bash
-docker run \
-  -e AZURE_DEVOPS_EXT_PAT=$AZURE_DEVOPS_EXT_PAT \
-  -e GITHUB_TOKEN=$GITHUB_TOKEN \
-  kald-devops:latest \
-  list_repositories
+# Install specific version
+pip install kald-devops==0.1.0
 ```
 
 ---
@@ -133,23 +85,18 @@ kald-devops deploy_pipelines
 
 ---
 
-## 5. Update to Latest Version
+## 5. Troubleshooting
 
+### "Index not available yet"
+
+**Problem:** Script says index may not be available
+
+**Solution:** This is normal if no releases have been published. Try:
 ```bash
-pip install --upgrade kald-devops
+pip install kald-devops
 ```
 
----
-
-## 6. Troubleshooting
-
-### "401 Unauthorized" Error
-
-**Problem:** Token is invalid or expired
-
-**Solution:**
-1. Create a new token at https://github.com/settings/tokens
-2. Update your `~/.config/pip/pip.conf` or run `setup_local_install.sh` again
+If it fails, the first release is still being built. Check back in a minute.
 
 ### "No module named 'kald_devops'"
 
@@ -157,8 +104,7 @@ pip install --upgrade kald-devops
 
 **Solution:**
 ```bash
-pip install --upgrade --force-reinstall kald-devops \
-  --index-url https://__token__:YOUR_GITHUB_PAT@pypi.pkg.github.com/KalderosLLC/simple/
+pip install --upgrade --force-reinstall kald-devops
 ```
 
 ### "Cannot find module requests/prettytable/slack_sdk"
@@ -170,13 +116,12 @@ pip install --upgrade --force-reinstall kald-devops \
 pip install requests prettytable slack-sdk
 ```
 
-### SSL Certificate Issues
+### Reset pip configuration
 
-**Problem:** Corporate proxy or firewall
-
-**Solution:**
+To revert the pip setup:
 ```bash
-pip install --trusted-host pypi.pkg.github.com kald-devops
+rm ~/.config/pip/pip.conf
+# Or restore from backup if one was created
 ```
 
 ---
@@ -185,7 +130,7 @@ pip install --trusted-host pypi.pkg.github.com kald-devops
 
 - **Read full documentation:** See [DISTRIBUTION.md](DISTRIBUTION.md)
 - **View CLI usage:** Run `kald-devops usage`
-- **Set up GitHub Actions:** Use workflows in `.github/workflows/`
+- **Set up GitHub:** Use [GITHUB_SETUP.md](GITHUB_SETUP.md)
 - **Development:** See [README.md](README.md#development)
 
 ---
