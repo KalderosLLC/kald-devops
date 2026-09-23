@@ -7,7 +7,7 @@
 #
 # This script:
 # 1. Creates ~/.config/pip/pip.conf
-# 2. Configures pip to use the GitHub Pages PyPI index
+# 2. Adds GitHub Pages as an extra index (searches PyPI first, then kald-devops)
 # 3. Enables 'pip install --upgrade kald-devops' to pull latest automatically
 #
 
@@ -42,10 +42,10 @@ echo -e "${YELLOW}Configuring pip to use GitHub Pages index${NC}"
 
 cat > "$PIP_CONFIG_FILE" << EOF
 [install]
-index-url = ${INDEX_URL}
+extra-index-url = ${INDEX_URL}
 
 [global]
-index-url = ${INDEX_URL}
+extra-index-url = ${INDEX_URL}
 EOF
 
 chmod 600 "$PIP_CONFIG_FILE"
