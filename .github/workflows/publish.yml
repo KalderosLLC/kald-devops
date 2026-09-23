@@ -53,9 +53,21 @@ jobs:
           echo "</body></html>" >> docs/simple/kald-devops/index.html
           cat docs/simple/kald-devops/index.html
 
+          # Create root-level index for PyPI
+          cat > docs/simple/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head><title>Simple Index</title></head>
+          <body>
+          <h1>Simple Index</h1>
+          <a href="kald-devops/">kald-devops</a>
+          </body></html>
+          EOF
+
       - name: Deploy PyPI Index to GitHub Pages
         if: startsWith(github.ref, 'refs/tags/')
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./docs
+          keep_files: true
