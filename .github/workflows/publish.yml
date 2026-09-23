@@ -29,7 +29,7 @@ jobs:
 
       - name: Publish to GitHub Packages
         env:
-          TWINE_REPOSITORY_URL: https://pypi.pkg.github.com/KalderosLLC
+          TWINE_REPOSITORY_URL: https://pypi.pkg.github.com/kalderosllc/
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         run: twine upload dist/*
