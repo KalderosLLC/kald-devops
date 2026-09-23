@@ -41,58 +41,69 @@ fi
 echo "✓ Repository accessible"
 echo ""
 
-# Step 1: Require pull request reviews
-echo "Step 1: Require pull request reviews before merging"
+# Step 1: Update repository metadata
+echo "Step 1: Update repository metadata"
 gh repo edit "$REPO" \
-  --require-code-review \
-  --require-review-dismissal
-echo "✓ Pull request reviews required"
+  --description "Kalderos DevOps utilities for managing Phoenix pipelines and database utilities" \
+  --homepage "https://github.com/KalderosLLC/kald-devops" \
+  --add-topic "devops" \
+  --add-topic "pipeline" \
+  --add-topic "azure" \
+  --add-topic "github" \
+  --add-topic "kalderos" \
+  2>/dev/null || echo "⚠ Some metadata updates may have failed"
+echo "✓ Repository metadata updated"
 
-# Step 2: Require status checks to pass
-echo "Step 2: Require status checks to pass before merging"
+# Step 2: Configure merge options
+echo "Step 2: Configure merge options"
 gh repo edit "$REPO" \
-  --require-status-checks \
-  --require-branches-up-to-date
-echo "✓ Status checks required"
+  --allow-squash-merge \
+  --allow-merge-commit \
+  --allow-rebase-merge \
+  2>/dev/null || echo "⚠ Merge options already configured"
+echo "✓ Merge options configured"
 
-# Step 3: Dismiss stale pull request approvals
-echo "Step 3: Dismiss stale pull request approvals"
-gh repo edit "$REPO" \
-  --dismiss-stale-reviews
-echo "✓ Stale reviews will be dismissed"
-
-# Step 4: Enable branch protection for main
-echo "Step 4: Configure branch protection for 'main'"
-gh api repos/"$REPO"/branches/main/protection \
-  -X PUT \
-  -f required_status_checks='{"strict":true,"contexts":["publish"]}' \
-  -f enforce_admins=true \
-  -f allow_force_pushes=false \
-  -f allow_deletions=false \
-  2>/dev/null || echo "⚠ Branch protection may already be configured"
-echo "✓ Branch protection configured"
+# Step 3: Note about branch protection
+echo ""
+echo "⚠️  Branch protection requires web UI or more complex API setup"
+echo ""
+echo "To complete branch protection, go to:"
+echo "  https://github.com/$REPO/settings/branches"
+echo ""
+echo "And configure 'main' branch with:"
+echo "  ✓ Require pull request reviews (1 approval)"
+echo "  ✓ Dismiss stale pull request approvals"
+echo "  ✓ Require status checks to pass"
+echo "  ✓ Require branches to be up to date"
+echo "  ✓ Require conversation resolution"
+echo "  ✓ Enforce admins to follow"
+echo "  ✓ Prevent force pushes"
+echo "  ✓ Prevent deletions"
 
 echo ""
 echo "============================================"
-echo "Repository configuration complete!"
+echo "CLI configuration complete!"
 echo "============================================"
 echo ""
 echo "Configuration applied:"
-echo "  ✓ Require pull request reviews before merging"
-echo "  ✓ Require status checks to pass before merging"
-echo "  ✓ Require branches to be up to date before merging"
-echo "  ✓ Dismiss stale pull request approvals"
-echo "  ✓ Enforce admins to follow branch protection"
-echo "  ✓ Prevent force pushes and deletions to main"
+echo "  ✓ Repository description"
+echo "  ✓ Homepage URL"
+echo "  ✓ Topics/tags"
+echo "  ✓ Merge options"
+echo ""
+echo "⚠️  Branch protection: Complete via web UI"
+echo "    Link: https://github.com/$REPO/settings/branches"
 echo ""
 echo "Next steps:"
-echo "  1. Push code and tags:"
+echo "  1. (Optional) Configure branch protection in web UI"
+echo ""
+echo "  2. Push code and tags:"
 echo "     git push -u origin main"
 echo "     git push --tags"
 echo ""
-echo "  2. Verify publish workflow runs:"
+echo "  3. Verify publish workflow runs:"
 echo "     gh run list --repo $REPO"
 echo ""
-echo "  3. Check package availability:"
+echo "  4. Check package in GitHub Packages:"
 echo "     gh api repos/$REPO/packages"
 echo ""
