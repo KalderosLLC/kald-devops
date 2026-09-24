@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Git Flow: Strategic Analysis & Recommendations</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+    <style>
+        :root {
+            --text-primary: #1a1a1a;
+            --text-secondary: #4a4a4a;
+            --text-tertiary: #6a6a6a;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #efefef;
+            --accent: #0052cc;
+            --accent-light: #e6f0ff;
+            --success: #228f0f;
+            --warning: #b85c04;
+            --danger: #ae1313;
+            --border: #e0e0e0;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --text-primary: #e5e5e5;
+                --text-secondary: #b0b0b0;
+                --text-tertiary: #8a8a8a;
+                --bg-primary: #1a1a1a;
+                --bg-secondary: #2a2a2a;
+                --bg-tertiary: #3a3a3a;
+                --accent: #4d94ff;
+                --accent-light: #0d2e66;
+                --border: #3a3a3a;
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --text-primary: #e5e5e5;
+            --text-secondary: #b0b0b0;
+            --text-tertiary: #8a8a8a;
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #3a3a3a;
+            --accent: #4d94ff;
+            --accent-light: #0d2e66;
+            --border: #3a3a3a;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            line-height: 1.6;
+            font-size: 16px;
+            padding: 2rem 1.5rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 2rem 0 0.5rem;
+            color: var(--text-primary);
+            page-break-after: avoid;
+        }
+
+        h2 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+            border-bottom: 3px solid var(--accent);
+            padding-bottom: 0.5rem;
+            page-break-after: avoid;
+        }
+
+        h3 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text-primary);
+            page-break-after: avoid;
+        }
+
+        .subtitle { color: var(--text-secondary); font-size: 1.1rem; font-weight: 500; margin-bottom: 2rem; }
+        .date { color: var(--text-tertiary); font-size: 0.95rem; margin-bottom: 2rem; }
+
+        .toc {
+            background: var(--accent-light);
+            border-left: 4px solid var(--accent);
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: var(--accent);
+        }
+
+        .toc ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .toc li {
+            margin: 0.5rem 0;
+        }
+
+        p { margin: 1rem 0; color: var(--text-primary); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+        }
+
+        th {
+            background: var(--accent);
+            color: var(--bg-primary);
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover { background: var(--bg-tertiary); }
+
+        .box {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        .box.success { border-left-color: var(--success); background: rgba(34, 143, 15, 0.05); }
+        .box.warning { border-left-color: var(--warning); background: rgba(184, 92, 4, 0.05); }
+        .box.danger { border-left-color: var(--danger); background: rgba(174, 19, 19, 0.05); }
+
+        .flow {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 4px;
+            margin: 1.5rem 0;
+            font-family: 'IBM Plex Sans', monospace;
+            font-size: 0.9rem;
+            line-height: 1.8;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+
+        .step-list li {
+            counter-increment: step-counter;
+            margin: 1rem 0;
+            padding-left: 2.5rem;
+            position: relative;
+        }
+
+        .step-list li:before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: var(--accent);
+            color: var(--bg-primary);
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'IBM Plex Sans', monospace;
+            font-size: 0.9rem;
+            color: var(--accent);
+        }
+
+        .page-break {
+            page-break-after: always;
+            margin: 3rem 0;
+            padding-top: 2rem;
+            border-top: 2px dashed var(--border);
+        }
+
+        ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+        li { margin: 0.5rem 0; }
+
+        @media print {
+            body { background: white; color: black; }
+            h1 { page-break-after: avoid; }
+            h2 { page-break-after: avoid; }
+            h3 { page-break-after: avoid; }
+            .page-break { page-break-before: always; }
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.3rem; }
+            table { font-size: 0.9rem; }
+            th, td { padding: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Git Flow: Strategic Analysis & Recommendations</h1>
+    <p class="subtitle">Branching Strategy for Sprint-Based Releases and Preview-Validated Deployments</p>
+    <p class="date">September 2026 | Kalderos LLC | REVISED</p>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ol>
+            <li>Executive Summary</li>
+            <li>Why Git Flow Fits Better</li>
+            <li>Git Flow Implementation</li>
+            <li>Git Flow vs GitHub Flow Comparison</li>
+            <li>Implementation Path</li>
+            <li>Alignment with Your Build/Deployment Process</li>
+            <li>Why This Works for Your Team</li>
+            <li>Next: kald-devops Integration</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>Executive Summary</h2>
+
+    <p>After analyzing the actual build and deployment process, <strong>Git Flow is the recommended strategic direction</strong>, not GitHub Flow. Your process already follows Git Flow principles — the question is formalizing it:</p>
+
+    <ul class="step-list">
+        <li>Sprint-based release cycles (not continuous deployment)</li>
+        <li>Preview environment as pre-release validation gate</li>
+        <li>Hotfixes originating from Preview with mixed application versions</li>
+        <li>Coordinated deployment across 14+ applications</li>
+        <li>Client-specific deployment flows (you manage Gilead environments)</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>Why Git Flow Fits Better</h2>
+
+    <h3>Your Current Workflow (Already Git Flow-Like)</h3>
+    <p>Your actual process already follows Git Flow principles:</p>
+
+    <table>
+        <tr>
+            <th>Phase</th>
+            <th>Current Process</th>
+            <th>Git Flow Equivalent</th>
+        </tr>
+        <tr>
+            <td>Daily Development</td>
+            <td>Feature branches → Main</td>
+            <td>Feature branches → Develop</td>
+        </tr>
+        <tr>
+            <td>Sprint End</td>
+            <td>Main pushed to Dev/Automated</td>
+            <td>Create release/* branch from develop</td>
+        </tr>
+        <tr>
+            <td>Pre-Release Testing</td>
+            <td>Artifacts deployed to Preview</td>
+            <td>release/* branch tested in Preview</td>
+        </tr>
+        <tr>
+            <td>Bug Found in Preview</td>
+            <td>Fixed, then tested again</td>
+            <td>Bugfixes committed to release/* branch</td>
+        </tr>
+        <tr>
+            <td>Release Ready</td>
+            <td>Merge to main, create tag</td>
+            <td>Merge release/* to main, create tag (no patch)</td>
+        </tr>
+        <tr>
+            <td>Production Deployment</td>
+            <td>Deploy from tag to Prod</td>
+            <td>Deploy fully-tested version to Prod</td>
+        </tr>
+        <tr>
+            <td>Production Bug (Rare)</td>
+            <td>Hotfix branches created</td>
+            <td>hotfix/* branches from main, merge back to main + develop</td>
+        </tr>
+    </table>
+
+    <p><strong>The insight:</strong> You're already doing Git Flow. The question is whether to formalize it.</p>
+
+    <div class="page-break"></div>
+
+    <h2>Git Flow Implementation</h2>
+
+    <h3>Branch Structure</h3>
+    <div class="flow">
+main (production releases only)
+  ↑ (hotfixes merge back here)
+
+develop (integration branch for next release)
+  ↑ (features merge here)
+
+feature/* (individual features, PRs to develop)
+  example: feature/payment-validation
+
+release/* (pre-release validation, created from develop)
+  example: release/0.2.0
+  Tests in Preview environment before main merge
+
+hotfix/* (production fixes, created from main)
+  example: hotfix/critical-bug-fix
+  Tests in Preview, then deployed to Prod
+    </div>
+
+    <h3>Workflow: Standard Release</h3>
+    <ol class="step-list">
+        <li><strong>Development:</strong> Features merge to <code>develop</code> throughout sprint</li>
+        <li><strong>Sprint End:</strong> Create <code>release/0.2.0</code> branch from <code>develop</code></li>
+        <li><strong>Deploy to Preview:</strong> Artifacts from release/* go to Preview for QA testing</li>
+        <li><strong>Bug Found:</strong> Fix directly in release/* branch (not in develop)</li>
+        <li><strong>Testing Passes:</strong> Merge release/* to <code>main</code> and <code>develop</code></li>
+        <li><strong>Tag:</strong> Create v0.2.0 tag on main</li>
+        <li><strong>Deploy to Prod:</strong> Build and deploy versioned artifacts</li>
+        <li><strong>Delete:</strong> Remove release/* branch after merge</li>
+    </ol>
+
+    <h3>Workflow: Release Bugfix (Bug Found in Preview)</h3>
+    <ol class="step-list">
+        <li><strong>Bug Found in Preview:</strong> Analyze which apps are affected</li>
+        <li><strong>Fix in Release Branch:</strong> Commit fix directly to <code>release/0.2.0</code></li>
+        <li><strong>Fix:</strong> Make changes (only affected apps)</li>
+        <li><strong>Test in Preview:</strong> Deploy mixed versions (fixed + current stable)</li>
+        <li><strong>Testing Passes:</strong> Release is ready</li>
+        <li><strong>Merge to Main:</strong> <code>git merge release/0.2.0 --no-ff main</code></li>
+        <li><strong>Tag Release:</strong> <code>git tag v0.2.0</code> (no patch needed)</li>
+        <li><strong>Merge to Develop:</strong> <code>git merge release/0.2.0 --no-ff develop</code></li>
+        <li><strong>Delete:</strong> Remove release/0.2.0 branch</li>
+        <li><strong>Deploy to Prod:</strong> Deploy from v0.2.0 tag</li>
+    </ol>
+
+    <h3>Workflow: Hotfix (Production Bug After Release)</h3>
+    <ol class="step-list">
+        <li><strong>Bug Found in Production:</strong> Critical issue discovered after main tag</li>
+        <li><strong>Create Hotfix:</strong> <code>git checkout -b hotfix/critical-payment-fix main</code></li>
+        <li><strong>Fix:</strong> Make changes (only affected apps)</li>
+        <li><strong>Test in Preview:</strong> Validate with production data</li>
+        <li><strong>Merge to Main:</strong> <code>git merge hotfix/* --no-ff main</code></li>
+        <li><strong>Tag Patch:</strong> <code>git tag v0.2.1</code> (patch version)</li>
+        <li><strong>Merge to Develop:</strong> <code>git merge hotfix/* --no-ff develop</code></li>
+        <li><strong>Delete:</strong> Remove hotfix/* branch</li>
+        <li><strong>Deploy to Prod:</strong> Deploy v0.2.1 patch</li>
+    </ol>
+
+    <div class="page-break"></div>
+
+    <h2>Git Flow vs GitHub Flow Comparison</h2>
+
+    <table>
+        <tr>
+            <th>Aspect</th>
+            <th>GitHub Flow</th>
+            <th>Git Flow (Recommended)</th>
+        </tr>
+        <tr>
+            <td><strong>Release Cycle</strong></td>
+            <td>Continuous (multiple per day)</td>
+            <td>Scheduled (weekly/sprint-based) ✓ Your Model</td>
+        </tr>
+        <tr>
+            <td><strong>Persistent Branches</strong></td>
+            <td>1 (main)</td>
+            <td>2 (main + develop) ✓ Better for coordination</td>
+        </tr>
+        <tr>
+            <td><strong>Pre-Release Testing</strong></td>
+            <td>No formal branch</td>
+            <td>release/* branches ✓ Your Preview environment</td>
+        </tr>
+        <tr>
+            <td><strong>Release Bugfixes</strong></td>
+            <td>No formal release branch</td>
+            <td>Fixed in release/* before main merge ✓ Prevents hotfixes</td>
+        </tr>
+        <tr>
+            <td><strong>Production Hotfixes</strong></td>
+            <td>Normal feature process to main</td>
+            <td>Dedicated hotfix/* branches ✓ For real production incidents</td>
+        </tr>
+        <tr>
+            <td><strong>Testing Timing</strong></td>
+            <td>After merge to main</td>
+            <td>Before merge to main ✓ Your Preview approach</td>
+        </tr>
+        <tr>
+            <td><strong>Team Scaling</strong></td>
+            <td>Works for small teams</td>
+            <td>Better for 20+ developers ✓ Your scale</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>Implementation Path</h2>
+
+    <div class="box success">
+        <h3>✅ Immediate (Next Sprint)</h3>
+        <ol class="step-list">
+            <li>Create and protect <code>develop</code> branch (same protection rules as main)</li>
+            <li>Set <code>develop</code> as default branch for developers</li>
+            <li>Document Git Flow workflow for team</li>
+            <li>Update CI/CD to build from both develop and release/* branches</li>
+            <li>Train team on feature → develop → release/* → main flow</li>
+        </ol>
+    </div>
+
+    <div class="box warning">
+        <h3>Formalize Hotfix Process</h3>
+        <p>Your <code>create-hotfix-branches.yml</code> workflow is good, but Git Flow naming makes it clearer:</p>
+        <ul>
+            <li>Use <code>hotfix/</code> prefix consistently</li>
+            <li>Merge back to both main AND develop (not just one)</li>
+            <li>Use <code>--no-ff</code> flags for clarity in history</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>Alignment with Your Build/Deployment Process</h2>
+
+    <table>
+        <tr>
+            <th>Git Flow Phase</th>
+            <th>Your Environment</th>
+            <th>Mapped Process</th>
+        </tr>
+        <tr>
+            <td>feature/* branches</td>
+            <td>Dev environment</td>
+            <td>Developers test locally before PR</td>
+        </tr>
+        <tr>
+            <td>develop branch</td>
+            <td>Dev + Automated</td>
+            <td>Latest development, automatically deployed</td>
+        </tr>
+        <tr>
+            <td>release/* branch</td>
+            <td>Preview environment</td>
+            <td>Pre-release validation with mixed versions</td>
+        </tr>
+        <tr>
+            <td>main branch</td>
+            <td>Prod environment</td>
+            <td>Only tagged releases, production deployments</td>
+        </tr>
+        <tr>
+            <td>hotfix/* branch</td>
+            <td>Preview (testing) → Prod</td>
+            <td>Emergency fixes validated in Preview first</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>Why This Works for Your Team</h2>
+
+    <ul>
+        <li><strong>✓ Matches your actual process:</strong> You're already doing Git Flow, just not formalizing it</li>
+        <li><strong>✓ Handles complexity:</strong> 14+ apps, mixed versions, client-specific flows all manageable</li>
+        <li><strong>✓ Scales with team:</strong> Works as team grows beyond 20 developers</li>
+        <li><strong>✓ Clear releases:</strong> No more v0.1.32.1, v0.1.32.2 proliferation</li>
+        <li><strong>✓ Preview validation:</strong> Testing before production tag (not after)</li>
+        <li><strong>✓ Hotfix coordination:</strong> Clear branch naming and merge strategy</li>
+        <li><strong>✓ Audit trail:</strong> Better git history for compliance</li>
+    </ul>
+
+    <h2>Next: kald-devops Integration</h2>
+
+    <p>With Git Flow + your build/deployment process:</p>
+
+    <ul>
+        <li><code>kald-devops list_pipelines --json</code> shows which versions are in each environment</li>
+        <li>Develop branch = latest code for Dev/Automated</li>
+        <li>Release/* branch = Preview environment artifacts</li>
+        <li>Main tags = Production releases</li>
+    </ul>
+
+    <p>This provides complete visibility via kald-devops CLI into your branching + deployment state.</p>
+
+    <hr style="margin: 3rem 0; border: none; border-top: 2px solid var(--border);">
+    <p style="color: var(--text-tertiary); font-size: 0.9rem; text-align: center;">
+        Document prepared for Kalderos LLC | September 2026
+    </p>
+
+</body>
+</html>
