@@ -130,6 +130,13 @@ if [[ "$AUTO_MERGE" == true ]]; then
 
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
   echo "Main branch has been updated"
+
+  # Clean up: return to main and sync
+  echo -e "\n${BLUE}Cleaning up...${NC}"
+  git checkout main
+  git pull origin main
+  echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
+  git branch -vv
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
   echo "Review the PR and merge manually when ready"
