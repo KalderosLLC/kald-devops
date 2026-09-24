@@ -19,30 +19,30 @@ ${BLUE}OPTIONS:${NC}
   -t, --title TITLE           PR title (required)
   -d, --description TEXT      PR description (stdin if not provided)
   -f, --file FILE             Read description from file
-  -m, --merge                 Automatically merge PR with admin override
-  -s, --squash                Use squash merge (requires --merge)
+  --no-merge                  Create PR without auto-merging (review only)
+  --no-squash                 Merge without squashing (keep all commits)
   -h, --help                  Show this help message
 
 ${BLUE}EXAMPLES:${NC}
-  # Create PR without auto-merge
+  # Standard: create and auto-merge with squash
   $(basename "$0") -t "My changes" -d "Description here"
 
-  # Create and auto-merge
-  $(basename "$0") -t "My changes" -d "Description" --merge --squash
+  # Create PR for review only (no auto-merge)
+  $(basename "$0") -t "My changes" -d "Description" --no-merge
 
-  # Create with custom branch name
-  $(basename "$0") -b "feature/my-feature" -t "My feature" --merge
+  # Auto-merge without squashing
+  $(basename "$0") -t "My changes" -d "Description" --no-squash
 
 USAGE
   exit 0
 }
 
-# Default values
+# Default values (auto-merge with squash by default)
 BRANCH_NAME=""
 PR_TITLE=""
 DESCRIPTION=""
-AUTO_MERGE=false
-SQUASH=false
+AUTO_MERGE=true
+SQUASH=true
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -68,12 +68,12 @@ while [[ $# -gt 0 ]]; do
       fi
       shift 2
       ;;
-    -m|--merge)
-      AUTO_MERGE=true
+    --no-merge)
+      AUTO_MERGE=false
       shift
       ;;
-    -s|--squash)
-      SQUASH=true
+    --no-squash)
+      SQUASH=false
       shift
       ;;
     -h|--help)
@@ -130,6 +130,13 @@ if [[ "$AUTO_MERGE" == true ]]; then
 
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
   echo "Main branch has been updated"
+
+  # Clean up: return to main and sync
+  echo -e "\n${BLUE}Cleaning up...${NC}"
+  git checkout main
+  git pull origin main
+  echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
+  git branch -vv
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
   echo "Review the PR and merge manually when ready"
