@@ -39,8 +39,9 @@ USAGE
 
 # Default values (auto-merge with squash by default)
 BRANCH_NAME=""
-PR_TITLE=""
-DESCRIPTION=""
+PR_TITLE="My work"
+DESCRIPTION="My Description"
+BASE_BRANCH=""
 AUTO_MERGE=true
 SQUASH=true
 
@@ -49,6 +50,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     -b|--branch)
       BRANCH_NAME="$2"
+      shift 2
+      ;;
+    -B|--base-branch)
+      BASE_BRANCH="$2"
       shift 2
       ;;
     -t|--title)
@@ -86,17 +91,35 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Validate required arguments
-if [[ -z "$PR_TITLE" ]]; then
-  echo -e "${RED}Error: PR title is required (-t or --title)${NC}"
-  usage
-fi
-
 # Detect if we started on main branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STARTED_ON_MAIN=false
 if [[ "$CURRENT_BRANCH" == "main" ]]; then
   STARTED_ON_MAIN=true
+fi
+
+# Set BASE_BRANCH default: current branch unless it's main, then use main
+if [[ -z "$BASE_BRANCH" ]]; then
+  if [[ "$CURRENT_BRANCH" == "main" ]]; then
+    BASE_BRANCH="main"
+  else
+    BASE_BRANCH="$CURRENT_BRANCH"
+  fi
+fi
+
+# If on main with default base branch, show helpful message
+if [[ "$STARTED_ON_MAIN" == true ]] && [[ "$BASE_BRANCH" == "main" ]]; then
+  echo -e "${BLUE}ℹ️  You're on main branch. To create a feature branch first:${NC}"
+  echo ""
+  echo "  git checkout -b feature/my-feature"
+  echo "  # Make your changes..."
+  echo "  ./bin/push-thru-pr.sh"
+  echo ""
+  echo -e "${RED}Or specify a different base branch:${NC}"
+  echo ""
+  echo "  ./bin/push-thru-pr.sh -B develop-dlindsay"
+  echo ""
+  exit 0
 fi
 
 # Auto-generate branch name if not provided
@@ -134,11 +157,11 @@ echo "📤 Pushing branch to origin..."
 git push -u origin "$BRANCH_NAME"
 
 # Create the PR
-echo -e "\n${BLUE}Creating pull request...${NC}"
+echo -e "\n${BLUE}Creating pull request to merge into $BASE_BRANCH...${NC}"
 if [[ -n "$DESCRIPTION" ]]; then
-  PR_URL=$(gh pr create --title "$PR_TITLE" --body "$DESCRIPTION" --base main)
+  PR_URL=$(gh pr create --title "$PR_TITLE" --body "$DESCRIPTION" --base "$BASE_BRANCH")
 else
-  PR_URL=$(gh pr create --title "$PR_TITLE" --base main)
+  PR_URL=$(gh pr create --title "$PR_TITLE" --base "$BASE_BRANCH")
 fi
 
 echo -e "${GREEN}✅ PR created: $PR_URL${NC}\n"
