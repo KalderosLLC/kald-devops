@@ -96,6 +96,7 @@ def _with_retry(fn):
 http_get   = _with_retry(requests.get)
 http_post  = _with_retry(requests.post)
 http_patch = _with_retry(requests.patch)
+http_put   = _with_retry(requests.put)
 
 # === CONFIGURATION ===
 organization = "kalderos"
@@ -1181,6 +1182,213 @@ def cmd_deploy(args, headers):
     print_table(table, args)
 
     if any_unsuccessful:
+        sys.exit(1)
+
+# =============================================================================
+# Add environment to pipelines
+# =============================================================================
+
+def cmd_add_environment_to_pipelines(args, headers):
+    """Add a new environment to multiple release pipelines."""
+    pipelines_str = os.getenv("PIPELINES", "")
+    env_name = os.getenv("ENVIRONMENT_NAME", "Load")
+
+    if not pipelines_str:
+        print_subcommand_usage("add_environment_to_pipelines")
+        log.error("Missing required environment variable: PIPELINES (comma-separated pipeline names)")
+        sys.exit(1)
+
+    pipelines = [p.strip() for p in pipelines_str.split(",")]
+    log.info("Adding environment '%s' to %d pipelines", env_name, len(pipelines))
+
+    success = 0
+    failures = 0
+
+    for pipeline_name in pipelines:
+        try:
+            # Find pipeline definition
+            pipelines_data = fetch_release_definitions(headers)
+            pipeline_def = next((p for p in pipelines_data if p.get("name") == pipeline_name), None)
+
+            if not pipeline_def:
+                log.error("Pipeline not found: %s", pipeline_name)
+                failures += 1
+                continue
+
+            definition_id = pipeline_def["id"]
+            log.info("Processing pipeline: %s (id=%d)", pipeline_name, definition_id)
+
+            # Fetch full definition
+            definition = fetch_pipeline_detail(headers, definition_id)
+            if not definition:
+                log.error("Failed to fetch definition for %s", pipeline_name)
+                failures += 1
+                continue
+
+            # Check if environment already exists
+            existing_envs = definition.get("environments", [])
+            if any(e.get("name", "").lower() == env_name.lower() for e in existing_envs):
+                log.info("Environment '%s' already exists in %s, skipping", env_name, pipeline_name)
+                success += 1
+                continue
+
+            # Clone an existing environment (prefer Preview, fall back to first)
+            template_env = next((e for e in existing_envs if e.get("name", "").lower() == "preview"), None)
+            if not template_env and existing_envs:
+                template_env = existing_envs[0]
+
+            if not template_env:
+                log.error("No existing environment to clone for %s", pipeline_name)
+                failures += 1
+                continue
+
+            # Clone and modify the environment
+            new_env = {k: v for k, v in template_env.items() if k not in ["id", "rank", "currentRelease"]}
+            new_env["id"] = None  # Let Azure assign ID
+            new_env["name"] = env_name
+            new_env["rank"] = max([e.get("rank", 0) for e in existing_envs] or [0]) + 1
+
+            # Null out nested IDs that will be auto-assigned
+            if "deployStep" in new_env:
+                new_env["deployStep"]["id"] = None
+            if "preDeployApprovals" in new_env and "approvals" in new_env["preDeployApprovals"]:
+                for approval in new_env["preDeployApprovals"]["approvals"]:
+                    approval["id"] = None
+            if "postDeployApprovals" in new_env and "approvals" in new_env["postDeployApprovals"]:
+                for approval in new_env["postDeployApprovals"]["approvals"]:
+                    approval["id"] = None
+
+            # Append to environments
+            definition["environments"].append(new_env)
+
+            # PUT definition back (Azure DevOps release definitions require PUT, not PATCH)
+            encoded_project = requests.utils.quote(project)
+            url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/definitions/{definition_id}?api-version=7.1"
+            log.debug("PUT URL: %s", url)
+            log.debug("Request body size: %d bytes", len(str(definition)))
+            resp = http_put(url, headers=headers, json=definition)
+
+            if resp.status_code != 200:
+                log.error("HTTP %d: %s", resp.status_code, resp.text[:500])
+                failures += 1
+                continue
+
+            log.info("✓ Added environment '%s' to %s (rank %d)", env_name, pipeline_name, new_env["rank"])
+            success += 1
+
+        except Exception as e:
+            log.error("Error processing %s: %s", pipeline_name, str(e))
+            failures += 1
+
+    print()
+    print(f"✓ {success} successful, ✗ {failures} failed")
+
+    if failures > 0:
+        sys.exit(1)
+
+def cmd_add_environment_to_releases(args, headers):
+    """Add an environment to existing releases (without rebuilding)."""
+    branch_or_tag = os.getenv("BRANCH_OR_TAG", "")
+    pipelines_str = os.getenv("PIPELINES", "")
+    env_name = os.getenv("ENVIRONMENT_NAME", "Load")
+
+    if not branch_or_tag or not pipelines_str:
+        print_subcommand_usage("add_environment_to_releases")
+        log.error("Missing required environment variables: BRANCH_OR_TAG, PIPELINES")
+        sys.exit(1)
+
+    pipelines = [p.strip() for p in pipelines_str.split(",")]
+    log.info("Adding environment '%s' to releases matching '%s' across %d pipelines", env_name, branch_or_tag, len(pipelines))
+
+    success = 0
+    failures = 0
+
+    for pipeline_name in pipelines:
+        try:
+            # Find pipeline definition
+            pipelines_data = fetch_release_definitions(headers)
+            pipeline_def = next((p for p in pipelines_data if p.get("name") == pipeline_name), None)
+
+            if not pipeline_def:
+                log.error("Pipeline not found: %s", pipeline_name)
+                failures += 1
+                continue
+
+            definition_id = pipeline_def["id"]
+            log.info("Processing pipeline: %s (id=%d)", pipeline_name, definition_id)
+
+            # Get release history
+            encoded_project = requests.utils.quote(project)
+            url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases?definitionId={definition_id}&$top=50&api-version=7.1"
+            resp = http_get(url, headers=headers)
+            if resp.status_code != 200:
+                log.error("Failed to fetch releases for %s: %s", pipeline_name, resp.text[:200])
+                failures += 1
+                continue
+
+            releases = resp.json().get("value", [])
+            matching_releases = [r for r in releases if branch_or_tag in r.get("name", "")]
+
+            if not matching_releases:
+                log.warning("No releases found matching '%s' in %s", branch_or_tag, pipeline_name)
+                failures += 1
+                continue
+
+            for release in matching_releases:
+                release_id = release["id"]
+                release_name = release.get("name", "unknown")
+
+                # Check if environment already exists
+                existing_envs = release.get("environments", [])
+                if any(e.get("name", "").lower() == env_name.lower() for e in existing_envs):
+                    log.info("Environment '%s' already exists in release %s", env_name, release_name)
+                    success += 1
+                    continue
+
+                # Clone an existing environment
+                template_env = next((e for e in existing_envs if e.get("name", "").lower() == "preview"), None)
+                if not template_env and existing_envs:
+                    template_env = existing_envs[0]
+
+                if not template_env:
+                    log.error("No existing environment to clone for %s", release_name)
+                    failures += 1
+                    continue
+
+                # Clone and modify the environment
+                new_env = {k: v for k, v in template_env.items() if k not in ["id", "rank", "status", "releaseReference"]}
+                new_env["id"] = None  # Let Azure assign ID
+                new_env["name"] = env_name
+                new_env["rank"] = max([e.get("rank", 0) for e in existing_envs] or [0]) + 1
+
+                # Null out nested IDs that will be auto-assigned
+                if "deployStep" in new_env:
+                    new_env["deployStep"]["id"] = None
+
+                # Append to environments
+                release["environments"].append(new_env)
+
+                # PUT release back
+                url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{release_id}?api-version=7.1"
+                log.debug("PUT URL: %s", url)
+                resp = http_put(url, headers=headers, json=release)
+
+                if resp.status_code != 200:
+                    log.error("HTTP %d: %s", resp.status_code, resp.text[:500])
+                    failures += 1
+                    continue
+
+                log.info("✓ Added environment '%s' to release %s (rank %d)", env_name, release_name, new_env["rank"])
+                success += 1
+
+        except Exception as e:
+            log.error("Error processing %s: %s", pipeline_name, str(e))
+            failures += 1
+
+    print()
+    print(f"✓ {success} successful, ✗ {failures} failed")
+
+    if failures > 0:
         sys.exit(1)
 
 # =============================================================================
@@ -2459,6 +2667,8 @@ def main():
     subparsers.add_parser("build_pipelines",  help="Trigger build pipelines (uses BRANCH_OR_TAG if set, otherwise main; filter via PIPELINES)")
     subparsers.add_parser("calc_pr", help="Print the PR whose terraform-plan-eastus.yml run last succeeded (GITHUB_TOKEN)")
     subparsers.add_parser("deploy_pipelines", help="Trigger deployments for release pipelines matching BRANCH_OR_TAG to ENVIRONMENTS (filter via PIPELINES)")
+    subparsers.add_parser("add_environment_to_pipelines", help="Add a new environment to release pipeline definitions (PIPELINES, ENVIRONMENT_NAME)")
+    subparsers.add_parser("add_environment_to_releases", help="Add an environment to existing releases without rebuilding (BRANCH_OR_TAG, PIPELINES, ENVIRONMENT_NAME)")
     subparsers.add_parser("tag_repository", help="Create and push a git tag from a source branch (BRANCH -> NAME)")
     subparsers.add_parser("list_repositories", help="List all repositories under the KalderosLLC GitHub org")
     subparsers.add_parser("create_release_notes", help="Create a GitHub release with auto-generated release notes (REPOSITORY, TAG)")
@@ -2514,6 +2724,8 @@ def main():
         "list_environments":  cmd_list_environments,
         "build_pipelines":    cmd_build,
         "deploy_pipelines":   cmd_deploy,
+        "add_environment_to_pipelines": cmd_add_environment_to_pipelines,
+        "add_environment_to_releases": cmd_add_environment_to_releases,
     }
 
     if args.command in AZURE_COMMANDS:
