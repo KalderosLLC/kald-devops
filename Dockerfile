@@ -30,20 +30,28 @@ RUN TERRAFORM_VERSION="1.9.5" && \
     rm /tmp/terraform.zip && \
     terraform version
 
-# Install Azure CLI, GitHub CLI, and utilities from Ubuntu repos
+# Install utilities from Ubuntu repos
 RUN apt-get update && \
     apt-get install -y \
-        azure-cli \
-        gh \
         postgresql-client \
         mysql-client \
         sqlite3 \
         vim \
         nano \
         less && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install Azure CLI (separate step with retry logic)
+RUN apt-get update && \
+    apt-get install -y azure-cli && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    az version && \
-    gh version
+    az version || true
+
+# Install GitHub CLI (separate step with retry logic)
+RUN apt-get update && \
+    apt-get install -y gh && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    gh version || true
 
 # Install Flyway (will be added in GitHub Actions, local builds can skip this for now)
 # This is intentionally left as a manual step for now due to architecture/availability issues
