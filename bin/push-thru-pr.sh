@@ -12,43 +12,46 @@ usage() {
   cat << USAGE
 ${BLUE}Usage: $(basename "$0") [OPTIONS]${NC}
 
-Creates a PR from current branch, optionally merges it with admin override.
+Push current branch and create a PR to main (or specified branch).
 
 ${BLUE}OPTIONS:${NC}
-  -b, --branch BRANCH_NAME    Feature branch name (default: auto-generated)
-  -t, --title TITLE           PR title (required)
-  -d, --description TEXT      PR description (stdin if not provided)
+  -B, --base-branch BRANCH    Base branch for PR (default: main)
+  -t, --title TITLE           PR title (default: "My work")
+  -d, --description TEXT      PR description (default: "My Description")
   -f, --file FILE             Read description from file
   --no-merge                  Create PR without auto-merging (review only)
   --no-squash                 Merge without squashing (keep all commits)
   -h, --help                  Show this help message
 
 ${BLUE}EXAMPLES:${NC}
-  # Standard: create and auto-merge with squash
-  $(basename "$0") -t "My changes" -d "Description here"
+  # Create PR from current branch to main (auto-merge with squash)
+  $(basename "$0")
 
-  # Create PR for review only (no auto-merge)
-  $(basename "$0") -t "My changes" -d "Description" --no-merge
+  # Create PR to develop-dlindsay
+  $(basename "$0") -B develop-dlindsay
 
-  # Auto-merge without squashing
-  $(basename "$0") -t "My changes" -d "Description" --no-squash
+  # Create PR for review only (don't auto-merge)
+  $(basename "$0") --no-merge
+
+  # Custom title and description
+  $(basename "$0") -t "Add new feature" -d "This adds X functionality"
 
 USAGE
   exit 0
 }
 
-# Default values (auto-merge with squash by default)
-BRANCH_NAME=""
-PR_TITLE=""
-DESCRIPTION=""
+# Default values
+PR_TITLE="My work"
+DESCRIPTION="My Description"
+BASE_BRANCH="main"
 AUTO_MERGE=true
 SQUASH=true
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
-    -b|--branch)
-      BRANCH_NAME="$2"
+    -B|--base-branch)
+      BASE_BRANCH="$2"
       shift 2
       ;;
     -t|--title)
@@ -86,59 +89,40 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Validate required arguments
-if [[ -z "$PR_TITLE" ]]; then
-  echo -e "${RED}Error: PR title is required (-t or --title)${NC}"
-  usage
-fi
-
-# Detect if we started on main branch
+# Get current branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-STARTED_ON_MAIN=false
-if [[ "$CURRENT_BRANCH" == "main" ]]; then
-  STARTED_ON_MAIN=true
+
+# Prevent PRs from main to main
+if [[ "$CURRENT_BRANCH" == "main" ]] && [[ "$BASE_BRANCH" == "main" ]]; then
+  echo -e "${RED}Error: Cannot create PR from main to main${NC}"
+  echo ""
+  echo -e "${BLUE}To work on changes:${NC}"
+  echo "  git checkout -b develop-dlindsay"
+  echo "  # Make your changes..."
+  echo "  $(basename "$0")"
+  echo ""
+  exit 1
 fi
 
-# Auto-generate branch name if not provided
-if [[ -z "$BRANCH_NAME" ]]; then
-  TIMESTAMP=$(date +%s)
-  BRANCH_NAME="feature/$(date +%s)"
-fi
+echo -e "${BLUE}Creating PR from $CURRENT_BRANCH → $BASE_BRANCH${NC}\n"
 
-echo -e "${BLUE}Creating PR to merge into main...${NC}\n"
-
-# If on main, stash changes and create feature branch
-if [[ "$STARTED_ON_MAIN" == true ]]; then
-  echo "📦 Stashing changes from main..."
-  git stash
-
-  echo "📌 Creating feature branch: $BRANCH_NAME"
-  git checkout -b "$BRANCH_NAME"
-
-  echo "📥 Applying stashed changes..."
-  git stash pop
-else
-  # If already on feature branch, just create new branch
-  echo "📌 Creating branch: $BRANCH_NAME"
-  git checkout -b "$BRANCH_NAME"
-fi
-
-# Stage and commit changes if any
+# Stage and commit any uncommitted changes
 if [[ -n $(git status -s) ]]; then
+  echo "📝 Committing changes..."
   git add -A
   git commit -m "$PR_TITLE"
 fi
 
-# Push the branch to origin
-echo "📤 Pushing branch to origin..."
-git push -u origin "$BRANCH_NAME"
+# Push current branch
+echo "📤 Pushing $CURRENT_BRANCH to origin..."
+git push -u origin "$CURRENT_BRANCH" 2>/dev/null || git push origin "$CURRENT_BRANCH"
 
 # Create the PR
 echo -e "\n${BLUE}Creating pull request...${NC}"
 if [[ -n "$DESCRIPTION" ]]; then
-  PR_URL=$(gh pr create --title "$PR_TITLE" --body "$DESCRIPTION" --base main)
+  PR_URL=$(gh pr create --title "$PR_TITLE" --body "$DESCRIPTION" --base "$BASE_BRANCH")
 else
-  PR_URL=$(gh pr create --title "$PR_TITLE" --base main)
+  PR_URL=$(gh pr create --title "$PR_TITLE" --base "$BASE_BRANCH")
 fi
 
 echo -e "${GREEN}✅ PR created: $PR_URL${NC}\n"
@@ -154,19 +138,9 @@ if [[ "$AUTO_MERGE" == true ]]; then
   fi
 
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
-  echo "Main branch has been updated"
-
-  # Clean up: return to main and sync only if we started on main
-  if [[ "$STARTED_ON_MAIN" == true ]]; then
-    echo -e "\n${BLUE}Cleaning up...${NC}"
-    git checkout main
-    git pull --no-edit origin main
-    echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
-    git branch -vv
-  else
-    echo -e "\n${GREEN}✅ Done! Your branch is ready.${NC}"
-  fi
+  echo "✓ Changes merged to $BASE_BRANCH"
+  echo "✓ You're still on: $CURRENT_BRANCH"
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
-  echo "Review the PR and merge manually when ready"
+  echo "Review at: $PR_URL"
 fi
