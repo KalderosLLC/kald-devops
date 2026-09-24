@@ -134,7 +134,7 @@ if [[ "$AUTO_MERGE" == true ]]; then
   # Clean up: return to main and sync
   echo -e "\n${BLUE}Cleaning up...${NC}"
   git checkout main
-  git pull origin main
+  git pull --no-edit origin main
   echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
   git branch -vv
 else
