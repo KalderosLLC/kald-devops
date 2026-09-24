@@ -95,22 +95,14 @@ fi
 # Detect if we started on main branch
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 STARTED_ON_MAIN=false
-ALREADY_ON_FEATURE_BRANCH=false
-
 if [[ "$CURRENT_BRANCH" == "main" ]]; then
   STARTED_ON_MAIN=true
-else
-  ALREADY_ON_FEATURE_BRANCH=true
 fi
 
-# Auto-generate branch name if not provided and on main
+# Auto-generate branch name if not provided
 if [[ -z "$BRANCH_NAME" ]]; then
-  if [[ "$STARTED_ON_MAIN" == true ]]; then
-    TIMESTAMP=$(date +%s)
-    BRANCH_NAME="feature/$(date +%s)"
-  else
-    BRANCH_NAME="$CURRENT_BRANCH"
-  fi
+  TIMESTAMP=$(date +%s)
+  BRANCH_NAME="feature/$(date +%s)"
 fi
 
 echo -e "${BLUE}Creating PR to merge into main...${NC}\n"
@@ -125,26 +117,21 @@ if [[ "$STARTED_ON_MAIN" == true ]]; then
 
   echo "📥 Applying stashed changes..."
   git stash pop
+else
+  # If already on feature branch, just create new branch
+  echo "📌 Creating branch: $BRANCH_NAME"
+  git checkout -b "$BRANCH_NAME"
+fi
 
-  # Stage and commit changes if any
-  if [[ -n $(git status -s) ]]; then
-    git add -A
-    git commit -m "$PR_TITLE"
-  fi
-elif [[ "$ALREADY_ON_FEATURE_BRANCH" == true ]]; then
-  # Already on feature branch - just verify changes are committed
-  if [[ -n $(git status -s) ]]; then
-    echo "⚠️  Uncommitted changes detected. Staging and committing..."
-    git add -A
-    git commit -m "$PR_TITLE"
-  else
-    echo "✓ Feature branch already has committed changes"
-  fi
+# Stage and commit changes if any
+if [[ -n $(git status -s) ]]; then
+  git add -A
+  git commit -m "$PR_TITLE"
 fi
 
 # Push the branch to origin
 echo "📤 Pushing branch to origin..."
-git push -u origin "$BRANCH_NAME" 2>/dev/null || git push origin "$BRANCH_NAME"
+git push -u origin "$BRANCH_NAME"
 
 # Create the PR
 echo -e "\n${BLUE}Creating pull request...${NC}"
