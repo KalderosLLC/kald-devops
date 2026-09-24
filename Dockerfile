@@ -55,17 +55,15 @@ RUN apt-get update && \
         less && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Azure CLI
-RUN apt-get update && \
-    apt-get install -y azure-cli && \
-    apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    az version
-
 # Install GitHub CLI
 RUN apt-get update && \
     apt-get install -y gh && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
     gh version
+
+# Install Azure CLI via pip (more reliable than apt)
+RUN python3 -m pip install azure-cli && \
+    az version
 
 # Upgrade pip and install Python dependencies
 RUN python3 -m pip install --upgrade pip setuptools wheel
