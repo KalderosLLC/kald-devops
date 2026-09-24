@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Build & Deployment Process Analysis</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+Pro:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+    <style>
+        :root {
+            --text-primary: #1a1a1a;
+            --text-secondary: #4a4a4a;
+            --text-tertiary: #6a6a6a;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8f8f8;
+            --bg-tertiary: #efefef;
+            --accent: #0052cc;
+            --accent-light: #e6f0ff;
+            --success: #228f0f;
+            --warning: #b85c04;
+            --danger: #ae1313;
+            --border: #e0e0e0;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root:not([data-theme="light"]) {
+                --text-primary: #e5e5e5;
+                --text-secondary: #b0b0b0;
+                --text-tertiary: #8a8a8a;
+                --bg-primary: #1a1a1a;
+                --bg-secondary: #2a2a2a;
+                --bg-tertiary: #3a3a3a;
+                --accent: #4d94ff;
+                --accent-light: #0d2e66;
+                --border: #3a3a3a;
+            }
+        }
+
+        :root[data-theme="dark"] {
+            --text-primary: #e5e5e5;
+            --text-secondary: #b0b0b0;
+            --text-tertiary: #8a8a8a;
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #3a3a3a;
+            --accent: #4d94ff;
+            --accent-light: #0d2e66;
+            --border: #3a3a3a;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+        }
+
+        body {
+            font-family: 'IBM Plex Sans', sans-serif;
+            line-height: 1.6;
+            font-size: 16px;
+            padding: 2rem 1.5rem;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 2rem 0 0.5rem;
+            color: var(--text-primary);
+            page-break-after: avoid;
+        }
+
+        h2 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 2rem 0 1rem;
+            color: var(--accent);
+            border-bottom: 3px solid var(--accent);
+            padding-bottom: 0.5rem;
+            page-break-after: avoid;
+        }
+
+        h3 {
+            font-family: 'Source Serif Pro', serif;
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text-primary);
+            page-break-after: avoid;
+        }
+
+        .subtitle { color: var(--text-secondary); font-size: 1.1rem; font-weight: 500; margin-bottom: 2rem; }
+        .date { color: var(--text-tertiary); font-size: 0.95rem; margin-bottom: 2rem; }
+
+        .toc {
+            background: var(--accent-light);
+            border-left: 4px solid var(--accent);
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 4px;
+        }
+
+        .toc h3 {
+            margin-top: 0;
+            color: var(--accent);
+        }
+
+        .toc ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .toc li { margin: 0.5rem 0; }
+
+        p { margin: 1rem 0; color: var(--text-primary); }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+        }
+
+        th {
+            background: var(--accent);
+            color: var(--bg-primary);
+            padding: 0.75rem;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        tr:hover { background: var(--bg-tertiary); }
+
+        .box {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 4px;
+        }
+
+        .box.success { border-left-color: var(--success); background: rgba(34, 143, 15, 0.05); }
+        .box.warning { border-left-color: var(--warning); background: rgba(184, 92, 4, 0.05); }
+        .box.danger { border-left-color: var(--danger); background: rgba(174, 19, 19, 0.05); }
+
+        .flow {
+            background: var(--bg-secondary);
+            padding: 1.5rem;
+            border-radius: 4px;
+            margin: 1.5rem 0;
+            font-family: 'IBM Plex Sans', monospace;
+            font-size: 0.9rem;
+            line-height: 1.8;
+            border: 1px solid var(--border);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .env-box {
+            display: inline-block;
+            background: var(--accent);
+            color: var(--bg-primary);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            margin: 0.25rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .env-box.auto { background: var(--success); }
+        .env-box.manual { background: var(--warning); }
+
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+
+        .step-list li {
+            counter-increment: step-counter;
+            margin: 1rem 0;
+            padding-left: 2.5rem;
+            position: relative;
+        }
+
+        .step-list li:before {
+            content: counter(step-counter);
+            position: absolute;
+            left: 0;
+            top: 0;
+            background: var(--accent);
+            color: var(--bg-primary);
+            width: 1.5rem;
+            height: 1.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .artifact-flow {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+            font-family: 'IBM Plex Sans', monospace;
+            font-size: 0.85rem;
+        }
+
+        .issue {
+            background: rgba(174, 19, 19, 0.05);
+            border-left: 4px solid var(--danger);
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+        }
+
+        .issue strong { color: var(--danger); }
+
+        code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'IBM Plex Sans', monospace;
+            font-size: 0.9rem;
+            color: var(--accent);
+        }
+
+        .page-break {
+            page-break-after: always;
+            margin: 3rem 0;
+            padding-top: 2rem;
+            border-top: 2px dashed var(--border);
+        }
+
+        ul, ol { margin: 1rem 0; padding-left: 1.5rem; }
+        li { margin: 0.5rem 0; }
+
+        @media print {
+            body { background: white; color: black; }
+            h1 { page-break-after: avoid; }
+            h2 { page-break-after: avoid; }
+            h3 { page-break-after: avoid; }
+            .page-break { page-break-before: always; }
+        }
+
+        @media (max-width: 600px) {
+            body { padding: 1rem; }
+            h1 { font-size: 1.8rem; }
+            h2 { font-size: 1.3rem; }
+            table { font-size: 0.9rem; }
+            th, td { padding: 0.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Build & Deployment Process Analysis</h1>
+    <p class="subtitle">Phoenix Repository: Current Architecture, Workflows, and Optimization Opportunities — REVISED WITH GIT FLOW ALIGNMENT</p>
+    <p class="date">September 2026 | Kalderos LLC</p>
+
+    <div class="toc">
+        <h3>Contents</h3>
+        <ol>
+            <li>Executive Summary</li>
+            <li>Current Architecture Overview</li>
+            <li>CI Pipeline (Build Process)</li>
+            <li>Artifact Management</li>
+            <li>Environment Progression</li>
+            <li>Deployment Process</li>
+            <li>Release Management</li>
+            <li>Hotfix Process & Selective Deployments</li>
+            <li>Pain Points & Issues</li>
+            <li>Recommendations</li>
+        </ol>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>1. Executive Summary</h2>
+
+    <p>Phoenix currently uses <strong>GitHub Actions for CI/CD</strong> to build and deploy 14+ applications across multiple environments. The process is partially automated (Dev/Automated environments) but becomes increasingly manual further down the pipeline (QA, Preview, Prod). A custom hotfix process allows for selective artifact deployments when bugs are discovered in later environments.</p>
+
+    <h3>Key Findings</h3>
+    <ul>
+        <li><strong>14+ applications</strong> managed in a monorepo with independent build pipelines</li>
+        <li><strong>Dual environment models:</strong> Automatic deploys (Dev/Automated) vs. manual approval gates (QA/Preview/Prod)</li>
+        <li><strong>Selective deployments:</strong> Hotfixes can deploy individual apps, not entire monorepo</li>
+        <li><strong>Kalderos manages Gilead environments:</strong> Test → Stage progression (Stage = their production)</li>
+        <li><strong>Manual orchestration:</strong> No central dashboard showing deployment status across environments</li>
+    </ul>
+
+    <h3>Immediate Opportunities</h3>
+    <ul>
+        <li>Automate artifact promotion (currently requires manual triggers)</li>
+        <li>Improve visibility into which artifacts are in which environments via <code>kald-devops list_pipelines --json</code></li>
+        <li>Simplify hotfix process (currently complex branch/tag creation)</li>
+        <li>Standardize client-specific deployments (Gilead logic is ad-hoc)</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>2. Current Architecture Overview</h2>
+
+    <h3>High-Level Flow</h3>
+    <div class="flow">
+GitHub Repository (main branch)
+    ↓
+GitHub Actions CI/CD (14 workflows)
+    ↓
+Build Artifacts (Docker images, binaries, packages)
+    ↓
+Azure Container Registry (ACR)
+    ↓
+Deployment Workflows (deploy-*.yml)
+    ↓
+Environments: Dev → Automated → QA → Preview → Prod
+    ↓
+Azure Infrastructure (App Services, Function Apps)
+    </div>
+
+    <h3>Component Breakdown</h3>
+    <table>
+        <tr>
+            <th>Component</th>
+            <th>Technology</th>
+            <th>Purpose</th>
+        </tr>
+        <tr>
+            <td>Source Control</td>
+            <td>GitHub (KalderosLLC/phoenix)</td>
+            <td>Code repository, release gate (main branch)</td>
+        </tr>
+        <tr>
+            <td>CI/CD Engine</td>
+            <td>GitHub Actions</td>
+            <td>Build, test, artifact creation</td>
+        </tr>
+        <tr>
+            <td>Artifact Registry</td>
+            <td>Azure Container Registry (ACR)</td>
+            <td>Stores Docker images for all 14 apps</td>
+        </tr>
+        <tr>
+            <td>Infrastructure as Code</td>
+            <td>Terraform (ARM templates)</td>
+            <td>Defines App Services, Function Apps, resources</td>
+        </tr>
+        <tr>
+            <td>Compute</td>
+            <td>Azure App Services, Function Apps</td>
+            <td>Runs applications in each environment</td>
+        </tr>
+        <tr>
+            <td>Orchestration</td>
+            <td>Manual workflow triggers</td>
+            <td>Deploy specific artifacts to specific environments</td>
+        </tr>
+    </table>
+
+    <h3>Applications & Build Artifacts</h3>
+    <table>
+        <tr>
+            <th>Category</th>
+            <th>Applications (14+)</th>
+            <th>Artifact Type</th>
+        </tr>
+        <tr>
+            <td>Azure Functions</td>
+            <td>Payment, EDI, Events, Notification, Geo, TPA, Kyriba, Enforcement, Client Transfer, Phoenix Core, Eligibilities</td>
+            <td>Docker image + Function App deployment</td>
+        </tr>
+        <tr>
+            <td>APIs</td>
+            <td>pay-api, request-api, phoenix-admin-api</td>
+            <td>Docker image + App Service deployment</td>
+        </tr>
+        <tr>
+            <td>Web UIs</td>
+            <td>pay-web, request-web, phoenix-admin-web</td>
+            <td>Compiled JavaScript + App Service deployment</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>3. CI Pipeline (Build Process)</h2>
+
+    <h3>Trigger Points</h3>
+    <table>
+        <tr>
+            <th>Trigger</th>
+            <th>When it Runs</th>
+            <th>Output</th>
+        </tr>
+        <tr>
+            <td>Pull Request</td>
+            <td>Developer opens PR to main</td>
+            <td>Unit tests, code coverage reports, no artifact publish</td>
+        </tr>
+        <tr>
+            <td>Push to main</td>
+            <td>Code merged to main branch</td>
+            <td>Full build, artifact created, tagged with commit SHA</td>
+        </tr>
+        <tr>
+            <td>Release tag</td>
+            <td>Semantic version tag created (v0.1.32)</td>
+            <td>Artifact re-tagged with version, promoted to "release" status</td>
+        </tr>
+        <tr>
+            <td>Hotfix tag</td>
+            <td>Hotfix branch tagged (v0.1.32.1)</td>
+            <td>New artifact built from hotfix commit, separate from main release</td>
+        </tr>
+    </table>
+
+    <h3>Build Process for Each Application</h3>
+
+    <h4>.NET Applications (APIs, Functions)</h4>
+    <div class="artifact-flow">
+1. Checkout repository
+2. Merge main into PR (for PR testing)
+3. Restore NuGet packages
+4. Run unit tests (dotnet test)
+5. Build in Release mode (dotnet build -c Release)
+6. Create Docker image from Dockerfile
+7. Push Docker image to ACR with tag:
+   - On main: azurecr.io/app-name:commit-sha
+   - On release: azurecr.io/app-name:v0.1.32
+   - On hotfix: azurecr.io/app-name:v0.1.32.1
+    </div>
+
+    <h4>NPM Applications (Web UIs)</h4>
+    <div class="artifact-flow">
+1. Checkout repository
+2. Install dependencies (npm install)
+3. Run tests (npm test)
+4. Build for Release (npm run build)
+5. Create Docker image containing compiled JavaScript
+6. Push Docker image to ACR with same tagging scheme
+    </div>
+
+    <h3>Test Coverage Requirements</h3>
+    <ul>
+        <li><strong>PR validation:</strong> Unit tests must pass, code coverage must meet threshold</li>
+        <li><strong>Main branch:</strong> All unit tests run before artifact creation</li>
+        <li><strong>Integration tests:</strong> Separate workflow (phoenix-integration-tests-ci.yml) runs full system tests</li>
+        <li><strong>No E2E in pipeline:</strong> E2E tests run manually or in environments after deployment</li>
+    </ul>
+
+    <div class="page-break"></div>
+
+    <h2>4. Artifact Management</h2>
+
+    <h3>Artifact Lifecycle</h3>
+    <div class="flow">
+Commit pushed to main
+    ↓ (build triggered)
+Docker image created
+    ↓ (tagged with commit SHA)
+Image pushed to ACR: azurecr.io/app-name:abc123def
+    ↓ (on release tag)
+Image re-tagged: azurecr.io/app-name:v0.1.32
+    ↓ (deployment triggered)
+Image pulled from ACR
+    ↓
+Deployed to environment (Dev, QA, Prod, etc.)
+    ↓
+Running in Azure App Service or Function App
+    </div>
+
+    <h3>Artifact Storage</h3>
+    <table>
+        <tr>
+            <th>Artifact Type</th>
+            <th>Storage Location</th>
+            <th>Retention Policy</th>
+            <th>Notes</th>
+        </tr>
+        <tr>
+            <td>Docker Images</td>
+            <td>Azure Container Registry (ACR)</td>
+            <td>All tags kept (commit SHA + version)</td>
+            <td>Pull-based deployment</td>
+        </tr>
+        <tr>
+            <td>Build Logs</td>
+            <td>GitHub Actions</td>
+            <td>90 days (GitHub default)</td>
+            <td>Contain test results, build output</td>
+        </tr>
+        <tr>
+            <td>Test Reports</td>
+            <td>GitHub Actions Artifacts</td>
+            <td>90 days (GitHub default)</td>
+            <td>Code coverage, test results</td>
+        </tr>
+    </table>
+
+    <h3>Artifact Versioning Strategy</h3>
+    <p><strong>Current approach:</strong> Docker image tags follow these patterns:</p>
+    <ul>
+        <li><code>app-name:abc123def</code> → Commit SHA (temporary, for PR testing)</li>
+        <li><code>app-name:v0.1.32</code> → Semantic version (release tag)</li>
+        <li><code>app-name:v0.1.32.1</code> → Patch version (hotfix tag)</li>
+        <li><code>app-name:latest</code> → Always points to latest main branch build</li>
+    </ul>
+
+    <p><strong>Issue:</strong> No explicit linkage between artifact version and deployment environment. Unknown which version is currently in Prod.</p>
+
+    <div class="page-break"></div>
+
+    <h2>5. Environment Progression</h2>
+
+    <h3>Standard Flow (Most Applications)</h3>
+    <table>
+        <tr>
+            <th>Environment</th>
+            <th>Deployment Trigger</th>
+            <th>Manual Approval</th>
+            <th>User Base</th>
+            <th>Typical Artifacts</th>
+        </tr>
+        <tr>
+            <td>Dev</td>
+            <td><span class="env-box auto">Automatic</span> on main push</td>
+            <td>No</td>
+            <td>Developers</td>
+            <td>Latest main (commit SHA)</td>
+        </tr>
+        <tr>
+            <td>Automated</td>
+            <td><span class="env-box auto">Automatic</span> on main push</td>
+            <td>No</td>
+            <td>Automated Testing</td>
+            <td>Latest main (commit SHA)</td>
+        </tr>
+        <tr>
+            <td>QA</td>
+            <td><span class="env-box manual">Manual</span> deploy workflow trigger</td>
+            <td>Yes (QA Lead)</td>
+            <td>QA Team</td>
+            <td>Release tag (v0.1.32)</td>
+        </tr>
+        <tr>
+            <td>Preview</td>
+            <td><span class="env-box manual">Manual</span> deploy workflow trigger</td>
+            <td>Yes (Manager)</td>
+            <td>Stakeholders</td>
+            <td>Release tag (v0.1.32)</td>
+        </tr>
+        <tr>
+            <td>Prod</td>
+            <td><span class="env-box manual">Manual</span> deploy workflow trigger</td>
+            <td>Yes (Director+)</td>
+            <td>End Users</td>
+            <td>Release tag (v0.1.32)</td>
+        </tr>
+    </table>
+
+    <h3>Gilead Client Flow (Kalderos Manages)</h3>
+    <div class="box warning">
+        <strong>Exception:</strong> Gilead is a client whose environments are managed by Kalderos, using different progression than standard applications.
+    </div>
+    <table>
+        <tr>
+            <th>Environment</th>
+            <th>Purpose</th>
+            <th>Deployment</th>
+        </tr>
+        <tr>
+            <td>Test</td>
+            <td>Client testing environment</td>
+            <td>Manual trigger from Kalderos</td>
+        </tr>
+        <tr>
+            <td>Stage</td>
+            <td>Client production environment</td>
+            <td>Manual trigger from Kalderos</td>
+        </tr>
+    </table>
+
+    <h3>Environment Characteristics</h3>
+    <table>
+        <tr>
+            <th>Aspect</th>
+            <th>Dev/Automated</th>
+            <th>QA/Preview</th>
+            <th>Prod</th>
+        </tr>
+        <tr>
+            <td>Data</td>
+            <td>Synthetic / Sandbox</td>
+            <td>Test data set</td>
+            <td>Live production data</td>
+        </tr>
+        <tr>
+            <td>Users</td>
+            <td>Internal only</td>
+            <td>Stakeholders, QA team</td>
+            <td>External, paying customers</td>
+        </tr>
+        <tr>
+            <td>Scale</td>
+            <td>Low (dev instances)</td>
+            <td>Medium (staging)</td>
+            <td>High (production scale)</td>
+        </tr>
+        <tr>
+            <td>Rollback Window</td>
+            <td>Immediate</td>
+            <td>Hours</td>
+            <td>Minutes</td>
+        </tr>
+        <tr>
+            <td>Downtime Impact</td>
+            <td>None (dev only)</td>
+            <td>Low (testing only)</td>
+            <td>High (revenue impact)</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>6. Deployment Process</h2>
+
+    <h3>Deployment Workflows</h3>
+    <p>Phoenix uses manual deployment workflows triggered via GitHub Actions UI:</p>
+    <ul>
+        <li><code>deploy-all.yml</code> → Deploy pay, request, admin APIs and Functions</li>
+        <li><code>deploy-geo.yml</code> → Deploy Geo function with staged promotion</li>
+        <li><code>deploy-eligibilities.yml</code> → Deploy eligibilities service</li>
+        <li><code>deploy-perftest.yml</code> → Deploy perftest infrastructure</li>
+    </ul>
+
+    <h3>Typical Deployment Workflow</h3>
+    <div class="flow">
+1. Developer/Manager triggers deploy-all.yml workflow
+2. Selects environment: dev, test, automated, stage, prod, or demo
+3. Optionally specifies run_id (for selecting specific build)
+4. Workflow executes:
+   a. Retrieves Docker image from ACR for that version
+   b. Runs Terraform to update infrastructure
+   c. Updates App Service / Function App with new image
+   d. Runs health checks / smoke tests
+5. Deployment complete (or rolled back if tests fail)
+    </div>
+
+    <h3>Deployment Parameters</h3>
+    <table>
+        <tr>
+            <th>Parameter</th>
+            <th>Options</th>
+            <th>Purpose</th>
+        </tr>
+        <tr>
+            <td>environment</td>
+            <td>dev, test, automated, stage, prod, demo</td>
+            <td>Target environment for deployment</td>
+        </tr>
+        <tr>
+            <td>run_id</td>
+            <td>GitHub Actions build run ID (optional)</td>
+            <td>Specify which build artifacts to deploy</td>
+        </tr>
+    </table>
+
+    <h3>Selective Deployment (Key Feature)</h3>
+    <div class="box success">
+        <strong>Important:</strong> Deployments are <strong>per-application, not per-entire-repo</strong>.
+    </div>
+    <p>The deploy-all.yml workflow independently deploys:</p>
+    <ul>
+        <li>pay-api (if changed)</li>
+        <li>pay-web (if changed)</li>
+        <li>request-api (if changed)</li>
+        <li>request-web (if changed)</li>
+        <li>phoenix-admin-api (if changed)</li>
+        <li>phoenix-admin-web (if changed)</li>
+        <li>Payments Function (if changed)</li>
+        <li>EDI Function (if changed)</li>
+        <li>+ all other functions</li>
+    </ul>
+    <p>Each can be deployed independently, allowing teams to fix bugs in one app without redeploying all 14 applications.</p>
+
+    <div class="page-break"></div>
+
+    <h2>7. Release Management</h2>
+
+    <h3>Release Process (Git Flow)</h3>
+    <table>
+        <tr>
+            <th>Step</th>
+            <th>Actor</th>
+            <th>Action</th>
+            <th>Artifact Change</th>
+        </tr>
+        <tr>
+            <td>1. End of Sprint</td>
+            <td>Team Lead</td>
+            <td>Confirm all developers "done" with features</td>
+            <td>None</td>
+        </tr>
+        <tr>
+            <td>2. Create Release Branch</td>
+            <td>Release Manager</td>
+            <td>Create <code>release/0.1.32</code> from main</td>
+            <td>None</td>
+        </tr>
+        <tr>
+            <td>3. Deploy to Preview</td>
+            <td>QA Lead</td>
+            <td>Trigger deploy from release/* branch</td>
+            <td>Build versioned artifacts</td>
+        </tr>
+        <tr>
+            <td>4. QA Testing</td>
+            <td>QA Team</td>
+            <td>Test in Preview; find bugs</td>
+            <td>None</td>
+        </tr>
+        <tr>
+            <td>5. Release Bugfixes</td>
+            <td>Dev Team</td>
+            <td>Fix bugs directly in release/* branch</td>
+            <td>None (same tag)</td>
+        </tr>
+        <tr>
+            <td>6. Re-test & Approve</td>
+            <td>QA Team</td>
+            <td>Re-test in Preview</td>
+            <td>None</td>
+        </tr>
+        <tr>
+            <td>7. Merge & Tag</td>
+            <td>Release Manager</td>
+            <td>Merge release/* to main, tag v0.1.32</td>
+            <td>Release ready</td>
+        </tr>
+        <tr>
+            <td>8. Deploy to Prod</td>
+            <td>Director</td>
+            <td>Deploy v0.1.32 to production</td>
+            <td>Live</td>
+        </tr>
+    </table>
+
+    <h3>Key Advantage: Bugs Fixed Before Production</h3>
+    <div class="box success">
+        <strong>With Git Flow release branches:</strong> All bugs are caught and fixed in Preview BEFORE tagging main. This means:
+        <ul>
+            <li>No patch versions needed for bugs found in testing</li>
+            <li>v0.1.32 goes to Prod fully tested</li>
+            <li>Hotfixes are rare (only for real production escapes)</li>
+        </ul>
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>8. Hotfix Process & Selective Deployments</h2>
+
+    <h3>Release Bugfix Workflow (Most Common Pattern)</h3>
+    <p>When bugs are discovered in Preview during pre-release validation:</p>
+
+    <div class="flow">
+1. QA/Tester discovers bug in Preview environment
+2. Fix is committed directly to release/0.1.32 branch
+3. Dev makes fix in release/0.1.32 (no new branch needed)
+4. Re-deploy to Preview with fixed artifact
+5. Testing resumes with mixed app versions
+6. Once all tests pass, release/* branch is ready
+7. Merge release/0.1.32 to main (--no-ff)
+8. Tag main: git tag v0.1.32 (no patch needed)
+9. Build triggers, creates release artifacts
+10. Deploy to Prod from v0.1.32 tag
+    </div>
+
+    <h3>Hotfix Workflow (Production Bug After Release)</h3>
+    <p>If a critical bug slips through and reaches production:</p>
+
+    <div class="flow">
+1. Production issue discovered after v0.1.32 released
+2. Create hotfix/* branch from main
+3. Dev fixes bug in hotfix/critical-fix branch
+4. Deploy to Preview for validation with production data
+5. Merge hotfix/* to main (--no-ff)
+6. Tag: git tag v0.1.32.1 (patch version)
+7. Build triggers, creates patch artifacts
+8. Merge hotfix/* to develop (--no-ff)
+9. Deploy v0.1.32.1 patch to Prod
+    </div>
+
+    <h3>Key: Most Fixes Are Release Bugfixes (Not Hotfixes)</h3>
+    <div class="box warning">
+        <strong>Important Pattern:</strong> The most common scenario is bugs found in Preview during release/* branch testing. These are <strong>release bugfixes</strong>, not hotfixes. They:
+        <ul>
+            <li>Are fixed directly in release/* branch</li>
+            <li>Get tested in Preview with mixed app versions</li>
+            <li>Get merged to main with no patch version needed</li>
+            <li>Prevent hotfixes from being necessary</li>
+        </ul>
+        True hotfixes (from main) only happen when bugs slip through to production.
+    </div>
+
+    <h3>Selective Artifact Deployment in Hotfixes</h3>
+    <div class="box success">
+        <strong>Key Feature:</strong> Hotfix deployments deploy ONLY the artifacts that were fixed, not the entire 14-app suite.
+    </div>
+
+    <p><strong>Example:</strong></p>
+    <ul>
+        <li>Bug found: payment-functions has a critical issue in Preview</li>
+        <li>Team creates hotfix from v0.1.32</li>
+        <li>Fixes bug in payment-functions only</li>
+        <li>Tags as v0.1.32.1</li>
+        <li>Tests in Preview with fixed payment-functions + stable other apps (mixed versions)</li>
+        <li>Deploys ONLY payment-functions:v0.1.32.1 to Prod</li>
+        <li>All other apps remain on v0.1.32</li>
+    </ul>
+
+    <h3>Artifact Versioning Across Environments</h3>
+    <table>
+        <tr>
+            <th>Application</th>
+            <th>Preview</th>
+            <th>Prod</th>
+            <th>Notes</th>
+        </tr>
+        <tr>
+            <td>payment-functions</td>
+            <td>v0.1.32.1</td>
+            <td>v0.1.32.1</td>
+            <td>Hotfix deployed</td>
+        </tr>
+        <tr>
+            <td>pay-api</td>
+            <td>v0.1.32</td>
+            <td>v0.1.32</td>
+            <td>No changes, same across all</td>
+        </tr>
+        <tr>
+            <td>edi-functions</td>
+            <td>v0.1.32</td>
+            <td>v0.1.32</td>
+            <td>No changes, same across all</td>
+        </tr>
+        <tr>
+            <td>pay-web</td>
+            <td>v0.1.32</td>
+            <td>v0.1.32</td>
+            <td>No changes, same across all</td>
+        </tr>
+    </table>
+
+    <h3>Hotfix Challenges</h3>
+    <div class="issue">
+        <strong>1. Manual Artifact Tracking:</strong> No centralized dashboard showing which app versions are in which environments. Spreadsheet-based tracking is error-prone.
+    </div>
+    <div class="issue">
+        <strong>2. Complex Process:</strong> Create-hotfix-branches.yml adds ceremony. Could be simplified with automation.
+    </div>
+    <div class="issue">
+        <strong>3. Version Proliferation:</strong> Many patch versions (v0.1.32.1, v0.1.32.2, v0.1.32.3) can accumulate.
+    </div>
+    <div class="issue">
+        <strong>4. Deployment Risk:</strong> Manual selection of which artifacts to deploy risks deploying wrong version by mistake.
+    </div>
+
+    <div class="page-break"></div>
+
+    <h2>9. Pain Points & Issues</h2>
+
+    <h3>Issue 1: Manual Orchestration</h3>
+    <div class="issue">
+        <strong>Problem:</strong> Each deployment requires manual workflow trigger via GitHub UI. No automation between environments.
+    </div>
+    <ul>
+        <li><strong>Impact:</strong> Slow deployment, prone to human error, difficult to coordinate across teams</li>
+        <li><strong>Example:</strong> To promote from QA to Preview to Prod requires 3 separate manual triggers</li>
+        <li><strong>Frequency:</strong> Happens weekly per release, 3-5 times per release (including hotfixes)</li>
+    </ul>
+
+    <h3>Issue 2: Artifact Visibility</h3>
+    <div class="issue">
+        <strong>Problem:</strong> No centralized view of which artifact versions are in which environments.
+    </div>
+    <ul>
+        <li><strong>Current approach:</strong> Check ACR tags manually, or rely on tribal knowledge</li>
+        <li><strong>Solution available:</strong> <code>kald-devops list_pipelines --json</code> provides this visibility — needs integration</li>
+        <li><strong>Deployment risk:</strong> Accidental re-deployment or wrong version</li>
+    </ul>
+
+    <h3>Issue 3: Hotfix Complexity</h3>
+    <div class="issue">
+        <strong>Problem:</strong> create-hotfix-branches.yml adds 5-10 minutes of ceremony to emergency fixes.
+    </div>
+    <ul>
+        <li><strong>Steps:</strong> Trigger workflow → confirm version inputs → wait for branches → create PR → merge → tag → build → deploy</li>
+        <li><strong>For critical bugs:</strong> Every minute counts. This process is too slow.</li>
+        <li><strong>Alternative:</strong> Could directly create hotfix commit + tag + deploy in 2-3 minutes</li>
+    </ul>
+
+    <h3>Issue 4: Environment-Specific Deployments</h3>
+    <div class="issue">
+        <strong>Problem:</strong> Gilead client uses Test → Stage flow, but no automation for different customer deployments.
+    </div>
+    <ul>
+        <li><strong>Current:</strong> Ad-hoc manual steps, easy to miss a deployment</li>
+        <li><strong>Scalability:</strong> If more clients need custom flows, process becomes unmanageable</li>
+    </ul>
+
+    <h3>Issue 5: No Artifact Promotion Policy</h3>
+    <div class="issue">
+        <strong>Problem:</strong> No formal policy for when/how artifacts move between environments.
+    </div>
+    <ul>
+        <li><strong>Unclear gates:</strong> What triggers QA → Preview promotion? No automated policy.</li>
+        <li><strong>Compliance risk:</strong> Hard to audit deployment approvals and handoffs</li>
+    </ul>
+
+    <h3>Issue 6: Testing After Release Tag</h3>
+    <div class="issue">
+        <strong>Problem:</strong> Release version is tagged (v0.1.32) BEFORE any QA testing. Leads to patch versions for bugs found later.
+    </div>
+    <ul>
+        <li><strong>Better approach:</strong> Test on release/* branch before tagging main (Git Flow)</li>
+        <li><strong>This improves the release process significantly</strong></li>
+    </ul>
+
+    <h3>Summary of Pain Points</h3>
+    <table>
+        <tr>
+            <th>Issue</th>
+            <th>Frequency</th>
+            <th>Severity</th>
+            <th>Impact</th>
+        </tr>
+        <tr>
+            <td>Manual orchestration</td>
+            <td>Every deployment</td>
+            <td>Medium</td>
+            <td>Slow, error-prone</td>
+        </tr>
+        <tr>
+            <td>Artifact visibility</td>
+            <td>Ongoing</td>
+            <td>High</td>
+            <td>Deployment risks, unclear state</td>
+        </tr>
+        <tr>
+            <td>Hotfix complexity</td>
+            <td>Weekly</td>
+            <td>High</td>
+            <td>Slow emergency response</td>
+        </tr>
+        <tr>
+            <td>Client-specific flows</td>
+            <td>Per-client</td>
+            <td>Medium</td>
+            <td>Manual, unscalable</td>
+        </tr>
+        <tr>
+            <td>No promotion policy</td>
+            <td>Ongoing</td>
+            <td>Medium</td>
+            <td>Compliance, audit trail</td>
+        </tr>
+        <tr>
+            <td>Testing after tag</td>
+            <td>Every release</td>
+            <td>High</td>
+            <td>Leads to patch versions</td>
+        </tr>
+    </table>
+
+    <div class="page-break"></div>
+
+    <h2>10. Recommendations</h2>
+
+    <h3>Short-Term (1-2 Weeks): Quick Wins</h3>
+
+    <h4>Recommendation 1: Wire Up kald-devops for Artifact Visibility</h4>
+    <div class="box success">
+        <strong>Use <code>kald-devops list_pipelines --json</code> to show deployment state:</strong>
+        <ul>
+            <li>All 14 applications</li>
+            <li>Version currently in each environment (Dev, QA, Preview, Prod, Gilead Test/Stage)</li>
+            <li>Last deployment timestamp</li>
+            <li>Link to ACR image details</li>
+        </ul>
+    </div>
+    <p><strong>Implementation:</strong> Call via scheduled workflow, store JSON output, display on dashboard</p>
+    <p><strong>Time:</strong> 3-5 hours</p>
+    <p><strong>Value:</strong> Eliminates artifact guessing, improves safety</p>
+
+    <h4>Recommendation 2: Simplify Hotfix Tagging</h4>
+    <div class="box success">
+        <strong>Replace create-hotfix-branches.yml with simpler approach:</strong>
+        <ul>
+            <li>Developer directly commits fix to hotfix/* branch</li>
+            <li>Creates git tag directly: <code>git tag v0.1.32.1</code></li>
+            <li>Push tag triggers build automatically</li>
+            <li>Manual deploy (same as now)</li>
+        </ul>
+    </div>
+    <p><strong>Time saved:</strong> 5-10 minutes per hotfix</p>
+    <p><strong>Simpler:</strong> One-step instead of three</p>
+
+    <h3>Medium-Term (2-4 Weeks): Core Improvements</h3>
+
+    <h4>Recommendation 3: Implement Git Flow with Release Branches</h4>
+    <div class="box success">
+        <strong>Adopt formal Git Flow branching:</strong>
+    </div>
+    <ul class="step-list">
+        <li>Create and protect <code>develop</code> branch</li>
+        <li>All features merge to develop (not main)</li>
+        <li>At sprint end, create <code>release/0.2.0</code> from develop</li>
+        <li>Test release/* branch in Preview BEFORE tagging main</li>
+        <li>Tag main only after release/* validation</li>
+        <li>Hotfixes created from main, merged back to both main and develop</li>
+    </ul>
+    <p><strong>Timeline:</strong> 2-3 weeks</p>
+    <p><strong>Impact:</strong> Eliminates patch versions, cleaner history, fewer tags</p>
+
+    <h3>Long-Term (1-3 Months): Strategic Improvements</h3>
+
+    <h4>Recommendation 4: Automated Environment Promotion</h4>
+    <div class="box">
+        <strong>Automate artifact flow between environments:</strong>
+    </div>
+    <ul class="step-list">
+        <li>Define promotion gates (Preview passes → auto-promote to Prod on approval)</li>
+        <li>Add approval checkpoints (Preview → Prod requires director approval)</li>
+        <li>Implement promotion workflow that triggers deploys automatically</li>
+        <li>Keep audit trail of who approved each promotion</li>
+    </ul>
+    <p><strong>Timeline:</strong> 2-3 weeks</p>
+    <p><strong>Impact:</strong> Faster releases, better auditability, reduced manual steps</p>
+
+    <h4>Recommendation 5: Standardize Client-Specific Flows</h4>
+    <div class="box">
+        <strong>Create configuration for different deployment patterns:</strong>
+    </div>
+    <ul>
+        <li>Standard: Dev → Automated → QA → Preview → Prod</li>
+        <li>Gilead: Dev → Automated → Test → Stage</li>
+        <li>Configuration in repo (deployment-config.yaml)</li>
+        <li>Deploy workflows read config to determine environment targets</li>
+    </ul>
+    <p><strong>Timeline:</strong> 1 week</p>
+    <p><strong>Impact:</strong> Scales to multiple clients, reduces manual configuration</p>
+
+    <h3>Implementation Priority Matrix</h3>
+    <table>
+        <tr>
+            <th>Recommendation</th>
+            <th>Effort</th>
+            <th>Impact</th>
+            <th>Priority</th>
+        </tr>
+        <tr>
+            <td>Wire up kald-devops</td>
+            <td>Low (3-5 hrs)</td>
+            <td>High (visibility)</td>
+            <td>🔴 Do First</td>
+        </tr>
+        <tr>
+            <td>Simplify hotfix tagging</td>
+            <td>Low (2 hrs)</td>
+            <td>High (speed)</td>
+            <td>🔴 Do First</td>
+        </tr>
+        <tr>
+            <td>Implement Git Flow</td>
+            <td>Medium (2-3 wks)</td>
+            <td>High (clarity)</td>
+            <td>🟡 Next</td>
+        </tr>
+        <tr>
+            <td>Automated promotion</td>
+            <td>Medium (2-3 wks)</td>
+            <td>High (efficiency)</td>
+            <td>🟡 Next</td>
+        </tr>
+        <tr>
+            <td>Standardize client flows</td>
+            <td>Medium (1 wk)</td>
+            <td>Medium (scalability)</td>
+            <td>🟡 Next</td>
+        </tr>
+    </table>
+
+    <h3>Risks of Not Addressing These Issues</h3>
+    <ul>
+        <li><strong>Deployment failures:</strong> Manual orchestration is error-prone; accidental re-deployments or wrong versions</li>
+        <li><strong>Slower incident response:</strong> Complex hotfix process delays critical fixes</li>
+        <li><strong>Compliance gaps:</strong> No audit trail of deployment approvals</li>
+        <li><strong>Scaling problems:</strong> Adding more clients makes manual flows unsustainable</li>
+        <li><strong>Version confusion:</strong> Too many patch versions, unclear which is actually in production</li>
+    </ul>
+
+    <hr style="margin: 3rem 0; border: none; border-top: 2px solid var(--border);">
+    <p style="color: var(--text-tertiary); font-size: 0.9rem; text-align: center;">
+        Document prepared for Kalderos LLC | September 2026<br>
+        Updated: Kalderos manages Gilead environments (Stage = production), hotfixes primarily from Preview, Git Flow alignment, kald-devops integration
+    </p>
+
+</body>
+</html>
