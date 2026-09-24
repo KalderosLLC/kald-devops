@@ -42,7 +42,7 @@ RUN FLYWAY_VERSION="9.22.3" && \
     tar xz -C /opt -f /tmp/flyway.tar.gz && \
     rm /tmp/flyway.tar.gz && \
     ln -s /opt/flyway-${FLYWAY_VERSION}/flyway /usr/local/bin/flyway && \
-    flyway -version
+    flyway --version
 
 # Install utilities from Ubuntu repos
 RUN apt-get update && \
