@@ -62,14 +62,14 @@ RUN apt-get update && \
     gh version
 
 # Install Azure CLI via pip (more reliable than apt)
-RUN python3 -m pip install azure-cli && \
+RUN python3 -m pip install --break-system-packages azure-cli && \
     az version
 
 # Upgrade pip and install Python dependencies
-RUN python3 -m pip install --upgrade pip setuptools wheel
+RUN python3 -m pip install --break-system-packages --upgrade pip setuptools wheel
 
 # Install kald-devops from GitHub Pages PyPI index (public)
-RUN python3 -m pip install --extra-index-url https://kalderosllc.github.io/kald-devops/simple kald-devops && \
+RUN python3 -m pip install --break-system-packages --extra-index-url https://kalderosllc.github.io/kald-devops/simple kald-devops && \
     kald-devops usage
 
 # Create non-root user for security
