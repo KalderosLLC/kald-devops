@@ -92,17 +92,42 @@ if [[ -z "$PR_TITLE" ]]; then
   usage
 fi
 
+# Detect if we started on main branch
+CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+STARTED_ON_MAIN=false
+if [[ "$CURRENT_BRANCH" == "main" ]]; then
+  STARTED_ON_MAIN=true
+fi
+
 # Auto-generate branch name if not provided
 if [[ -z "$BRANCH_NAME" ]]; then
   TIMESTAMP=$(date +%s)
-  BRANCH_NAME="pr/push-to-main-$TIMESTAMP"
+  BRANCH_NAME="feature/$(date +%s)"
 fi
 
 echo -e "${BLUE}Creating PR to merge into main...${NC}\n"
 
-# Create feature branch from current main
-echo "📌 Creating branch: $BRANCH_NAME"
-git checkout -b "$BRANCH_NAME"
+# If on main, stash changes and create feature branch
+if [[ "$STARTED_ON_MAIN" == true ]]; then
+  echo "📦 Stashing changes from main..."
+  git stash
+
+  echo "📌 Creating feature branch: $BRANCH_NAME"
+  git checkout -b "$BRANCH_NAME"
+
+  echo "📥 Applying stashed changes..."
+  git stash pop
+else
+  # If already on feature branch, just create new branch
+  echo "📌 Creating branch: $BRANCH_NAME"
+  git checkout -b "$BRANCH_NAME"
+fi
+
+# Stage and commit changes if any
+if [[ -n $(git status -s) ]]; then
+  git add -A
+  git commit -m "$PR_TITLE"
+fi
 
 # Push the branch to origin
 echo "📤 Pushing branch to origin..."
@@ -131,12 +156,16 @@ if [[ "$AUTO_MERGE" == true ]]; then
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
   echo "Main branch has been updated"
 
-  # Clean up: return to main and sync
-  echo -e "\n${BLUE}Cleaning up...${NC}"
-  git checkout main
-  git pull --no-edit origin main
-  echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
-  git branch -vv
+  # Clean up: return to main and sync only if we started on main
+  if [[ "$STARTED_ON_MAIN" == true ]]; then
+    echo -e "\n${BLUE}Cleaning up...${NC}"
+    git checkout main
+    git pull --no-edit origin main
+    echo -e "${GREEN}✅ Local main synced with origin/main${NC}\n"
+    git branch -vv
+  else
+    echo -e "\n${GREEN}✅ Done! Your branch is ready.${NC}"
+  fi
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
   echo "Review the PR and merge manually when ready"

@@ -1,24 +1,55 @@
 #!/bin/bash
 #
-# Setup branch protection for main branch
+# Setup/remove branch protection for main branch
 #
-# Usage: ./setup_branch_protection.sh
+# Usage: ./setup_branch_protection.sh [-r|--remove]
 #
 
 set -e
 
 REPO="KalderosLLC/kald-devops"
 BRANCH="main"
+REMOVE=false
 
-echo "Setting up branch protection for $REPO / $BRANCH"
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -r|--remove)
+      REMOVE=true
+      shift
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
+  esac
+done
+
+if [[ "$REMOVE" == true ]]; then
+  echo "Removing branch protection from $REPO / $BRANCH"
+else
+  echo "Setting up branch protection for $REPO / $BRANCH"
+fi
 echo ""
 
-# Create a temporary JSON file for the API request
-TEMP_JSON=$(mktemp)
-trap "rm -f $TEMP_JSON" EXIT
+if [[ "$REMOVE" == true ]]; then
+  echo "Removing branch protection..."
 
-# Write the branch protection configuration to JSON file
-cat > "$TEMP_JSON" << 'EOF'
+  gh api \
+    -X DELETE \
+    "repos/$REPO/branches/$BRANCH/protection"
+
+  echo ""
+  echo "✅ Branch protection removed!"
+  echo ""
+  echo "Verify at: https://github.com/$REPO/settings/branches"
+else
+  # Create a temporary JSON file for the API request
+  TEMP_JSON=$(mktemp)
+  trap "rm -f $TEMP_JSON" EXIT
+
+  # Write the branch protection configuration to JSON file
+  cat > "$TEMP_JSON" << 'EOF'
 {
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
@@ -37,23 +68,24 @@ cat > "$TEMP_JSON" << 'EOF'
 }
 EOF
 
-echo "Applying branch protection..."
+  echo "Applying branch protection..."
 
-# Apply the protection using the JSON file
-gh api \
-  --input "$TEMP_JSON" \
-  -X PUT \
-  "repos/$REPO/branches/$BRANCH/protection"
+  # Apply the protection using the JSON file
+  gh api \
+    --input "$TEMP_JSON" \
+    -X PUT \
+    "repos/$REPO/branches/$BRANCH/protection"
 
-echo ""
-echo "✅ Branch protection configured!"
-echo ""
-echo "Settings applied to '$BRANCH':"
-echo "  ✓ Require 1 pull request review"
-echo "  ✓ Dismiss stale approvals"
-echo "  ✓ Enforce admins"
-echo "  ✓ Prevent force pushes"
-echo "  ✓ Prevent deletions"
-echo "  ✓ Require conversation resolution"
-echo ""
-echo "Verify at: https://github.com/$REPO/settings/branches"
+  echo ""
+  echo "✅ Branch protection configured!"
+  echo ""
+  echo "Settings applied to '$BRANCH':"
+  echo "  ✓ Require 1 pull request review"
+  echo "  ✓ Dismiss stale approvals"
+  echo "  ✓ Enforce admins"
+  echo "  ✓ Prevent force pushes"
+  echo "  ✓ Prevent deletions"
+  echo "  ✓ Require conversation resolution"
+  echo ""
+  echo "Verify at: https://github.com/$REPO/settings/branches"
+fi
