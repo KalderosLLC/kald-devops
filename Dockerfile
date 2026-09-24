@@ -65,8 +65,8 @@ RUN apt-get update && \
 RUN python3 -m pip install --break-system-packages azure-cli && \
     az version
 
-# Upgrade pip and install Python dependencies
-RUN python3 -m pip install --break-system-packages --upgrade pip setuptools wheel
+# Python dependencies already included from python3-full
+# (pip, setuptools, wheel already installed)
 
 # Install kald-devops from GitHub Pages PyPI index (public)
 RUN python3 -m pip install --break-system-packages --extra-index-url https://kalderosllc.github.io/kald-devops/simple kald-devops && \
