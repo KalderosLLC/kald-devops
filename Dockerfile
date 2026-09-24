@@ -5,11 +5,15 @@ LABEL description="Devops tools image with kald-devops, Terraform, Flyway, and i
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update system and install base dependencies
+# Update system and install base + build dependencies
 RUN apt-get update && \
     apt-get install -y \
-        python3 \
+        python3-full \
         python3-pip \
+        python3-dev \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
         curl \
         wget \
         git \
@@ -18,17 +22,27 @@ RUN apt-get update && \
         tar \
         gzip \
         ca-certificates \
-        lsb-release && \
+        lsb-release \
+        openssh-client && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install Terraform binary directly (hardcoded stable version, auto-detect architecture)
 RUN TERRAFORM_VERSION="1.9.5" && \
     ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "arm64" ]; then TERRAFORM_ARCH="arm64"; else TERRAFORM_ARCH="amd64"; fi && \
-    curl -fsSL -k https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TERRAFORM_ARCH}.zip -o /tmp/terraform.zip && \
+    curl -fsSL https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${TERRAFORM_ARCH}.zip -o /tmp/terraform.zip && \
     unzip /tmp/terraform.zip -d /usr/local/bin && \
     rm /tmp/terraform.zip && \
     terraform version
+
+# Install Flyway (x86_64 - GitHub Actions runs on x86)
+RUN FLYWAY_VERSION="9.22.3" && \
+    mkdir -p /opt && \
+    curl -fsSL https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/${FLYWAY_VERSION}/flyway-commandline-${FLYWAY_VERSION}-linux-x64.tar.gz -o /tmp/flyway.tar.gz && \
+    tar xz -C /opt -f /tmp/flyway.tar.gz && \
+    rm /tmp/flyway.tar.gz && \
+    ln -s /opt/flyway-${FLYWAY_VERSION}/flyway /usr/local/bin/flyway && \
+    flyway -version
 
 # Install utilities from Ubuntu repos
 RUN apt-get update && \
@@ -41,20 +55,17 @@ RUN apt-get update && \
         less && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Azure CLI (separate step with retry logic)
+# Install Azure CLI
 RUN apt-get update && \
     apt-get install -y azure-cli && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    az version || true
+    az version
 
-# Install GitHub CLI (separate step with retry logic)
+# Install GitHub CLI
 RUN apt-get update && \
     apt-get install -y gh && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
-    gh version || true
-
-# Install Flyway (will be added in GitHub Actions, local builds can skip this for now)
-# This is intentionally left as a manual step for now due to architecture/availability issues
+    gh version
 
 # Upgrade pip and install Python dependencies
 RUN python3 -m pip install --upgrade pip setuptools wheel
@@ -76,4 +87,4 @@ USER devops
 
 # Default entrypoint
 ENTRYPOINT ["/bin/bash"]
-CMD ["-c", "echo 'Kalderos DevOps Tools (Rocky 9)' && bash"]
+CMD ["-c", "echo 'Kalderos DevOps Tools (Ubuntu 24.04 LTS)' && bash"]

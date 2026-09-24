@@ -8,15 +8,16 @@ The `devops-tools` Docker image includes kald-devops and all infrastructure tool
 - **Registry**: ghcr.io/kalderosllc/kald-devops/devops-tools
 - **Included Tools**:
   - kald-devops CLI
-  - Terraform
+  - Terraform (x86_64, ARM64 support)
   - Flyway (database migrations)
   - Azure CLI
   - GitHub CLI
   - PostgreSQL client
   - MySQL client
   - SQLite
-  - curl, jq, git, wget
-  - Python 3 & pip
+  - curl, jq, git, wget, openssh-client
+  - Python 3 (full) & pip
+  - Build tools (gcc, make, libssl-dev, libffi-dev)
 
 ## Usage
 
@@ -82,18 +83,15 @@ Images are tagged with:
 
 ## Building Locally
 
+This image is optimized for GitHub Actions. Local builds with corporate proxies (Zscaler, etc.) may encounter SSL certificate verification issues.
+
 ```bash
-# Build the image
-docker build -t devops-tools:local .
-
-# Run locally built image
-docker run -it -v $(pwd):/workspace devops-tools:local
-
-# Run a specific command
-docker run --rm -v $(pwd):/workspace devops-tools:local terraform --version
+# Pull and run the pre-built image from GHCR
+docker pull ghcr.io/kalderosllc/kald-devops/devops-tools:latest
+docker run -it -v $(pwd):/workspace ghcr.io/kalderosllc/kald-devops/devops-tools:latest
 ```
 
-**Note:** The Dockerfile downloads tool binaries directly (Terraform, Flyway) which works reliably both locally and in GitHub Actions, even behind corporate proxies with SSL interception.
+**Note:** This is the recommended approach — the image is automatically built in GitHub Actions and published to GHCR.
 
 ## Version Strategy
 
