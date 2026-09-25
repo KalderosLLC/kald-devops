@@ -32,7 +32,7 @@ jobs:
           PIPELINES: ${{ inputs.pipelines }}
           ENVIRONMENTS: ${{ inputs.environments }}
           AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
-        run: kald-devops list_pipelines -v
+        run: kald-devops --verbose list_pipelines
 
       - name: Upload Results
         uses: actions/upload-artifact@v4
