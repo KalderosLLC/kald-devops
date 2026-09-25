@@ -1300,7 +1300,7 @@ def cmd_add_environment_to_pipelines(args, headers):
 def cmd_create_releases_from_artifact(args, headers):
     """Create new releases from an artifact version (with new pipeline definition including Load)."""
     pipelines_str = os.getenv("PIPELINES", "")
-    artifact_version = os.getenv("ARTIFACT_VERSION", "v1.21.0")
+    source_release = os.getenv("SOURCE_RELEASE", "")
 
     if not pipelines_str:
         print_subcommand_usage("create_releases_from_artifact")
@@ -1308,7 +1308,10 @@ def cmd_create_releases_from_artifact(args, headers):
         sys.exit(1)
 
     pipelines = [p.strip() for p in pipelines_str.split(",")]
-    log.info("Creating new releases from first available artifact across %d pipelines", len(pipelines))
+    if source_release:
+        log.info("Creating new releases from source release '%s' across %d pipelines", source_release, len(pipelines))
+    else:
+        log.info("Creating new releases from first available artifact across %d pipelines", len(pipelines))
 
     success = 0
     failures = 0
@@ -1355,36 +1358,61 @@ def cmd_create_releases_from_artifact(args, headers):
 
             releases_summary = resp.json().get("value", [])
 
-            # Find an artifact with the target version by fetching full releases
+            # Find an artifact by source release name or first available
             artifact_id = None
             source_release_name = None
-            for rel_summary in releases_summary:
-                rel_id = rel_summary["id"]
-                rel_name = rel_summary.get("name")
 
-                # Fetch full release to get artifact details
-                url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
-                resp_full = http_get(url_full, headers=headers)
-                if resp_full.status_code != 200:
-                    continue
-
-                rel_full = resp_full.json()
-                for artifact in rel_full.get("artifacts", []):
-                    ver_ref = artifact.get("definitionReference", {}).get("version", {})
-                    artifact_vid = ver_ref.get("id", "")
-                    if artifact_vid:
-                        artifact_id = artifact_vid
-                        source_release_name = rel_name
-                        log.debug("Found artifact ID %s in release %s", artifact_id, rel_name)
+            if source_release:
+                # Search for specific release
+                for rel_summary in releases_summary:
+                    if rel_summary.get("name") == source_release:
+                        rel_id = rel_summary["id"]
+                        url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
+                        resp_full = http_get(url_full, headers=headers)
+                        if resp_full.status_code == 200:
+                            rel_full = resp_full.json()
+                            for artifact in rel_full.get("artifacts", []):
+                                ver_ref = artifact.get("definitionReference", {}).get("version", {})
+                                artifact_vid = ver_ref.get("id", "")
+                                if artifact_vid:
+                                    artifact_id = artifact_vid
+                                    source_release_name = source_release
+                                    log.debug("Found artifact ID %s in release %s", artifact_id, source_release)
+                                    break
                         break
 
-                if artifact_id:
-                    break
+                if not artifact_id:
+                    log.warning("Release '%s' not found or has no artifacts in %s", source_release, pipeline_name)
+                    failures += 1
+                    continue
+            else:
+                # Use first available artifact
+                for rel_summary in releases_summary:
+                    rel_id = rel_summary["id"]
+                    rel_name = rel_summary.get("name")
 
-            if not artifact_id:
-                log.warning("No releases found with artifact in %s", pipeline_name)
-                failures += 1
-                continue
+                    url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
+                    resp_full = http_get(url_full, headers=headers)
+                    if resp_full.status_code != 200:
+                        continue
+
+                    rel_full = resp_full.json()
+                    for artifact in rel_full.get("artifacts", []):
+                        ver_ref = artifact.get("definitionReference", {}).get("version", {})
+                        artifact_vid = ver_ref.get("id", "")
+                        if artifact_vid:
+                            artifact_id = artifact_vid
+                            source_release_name = rel_name
+                            log.debug("Found artifact ID %s in release %s", artifact_id, rel_name)
+                            break
+
+                    if artifact_id:
+                        break
+
+                if not artifact_id:
+                    log.warning("No releases found with artifact in %s", pipeline_name)
+                    failures += 1
+                    continue
 
             # Create new release with this artifact
             release_body = {
@@ -2694,7 +2722,7 @@ def main():
     subparsers.add_parser("calc_pr", help="Print the PR whose terraform-plan-eastus.yml run last succeeded (GITHUB_TOKEN)")
     subparsers.add_parser("deploy_pipelines", help="Trigger deployments for release pipelines matching BRANCH_OR_TAG to ENVIRONMENTS (filter via PIPELINES)")
     subparsers.add_parser("add_environment_to_pipelines", help="Add a new environment to release pipeline definitions (PIPELINES, ENVIRONMENT_NAME)")
-    subparsers.add_parser("create_releases_from_artifact", help="Create new releases from an artifact version with updated pipeline definition (PIPELINES, ARTIFACT_VERSION)")
+    subparsers.add_parser("create_releases_from_artifact", help="Create new releases from an artifact with updated pipeline definition (PIPELINES, SOURCE_RELEASE optional)")
     subparsers.add_parser("tag_repository", help="Create and push a git tag from a source branch (BRANCH -> NAME)")
     subparsers.add_parser("list_repositories", help="List all repositories under the KalderosLLC GitHub org")
     subparsers.add_parser("create_release_notes", help="Create a GitHub release with auto-generated release notes (REPOSITORY, TAG)")
