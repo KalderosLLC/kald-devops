@@ -33,4 +33,4 @@ jobs:
           ENVIRONMENTS: ${{ inputs.environments }}
           BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: kald-devops apply_flyway -v
+        run: kald-devops --verbose apply_flyway

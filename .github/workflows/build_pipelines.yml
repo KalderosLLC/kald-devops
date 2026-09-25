@@ -39,4 +39,4 @@ jobs:
           BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
           FORCE_REBUILD: ${{ inputs.force_rebuild }}
           AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
-        run: kald-devops build_pipelines -v
+        run: kald-devops --verbose build_pipelines
