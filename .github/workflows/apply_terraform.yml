@@ -32,4 +32,4 @@ jobs:
           ENVIRONMENTS: ${{ inputs.environments }}
           PR: ${{ inputs.pr }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: kald-devops apply_terraform -v
+        run: kald-devops --verbose apply_terraform

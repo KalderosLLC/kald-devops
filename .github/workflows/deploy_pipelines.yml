@@ -43,4 +43,4 @@ jobs:
           BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
           FORCE_REDEPLOY: ${{ inputs.force_redeploy }}
           AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
-        run: kald-devops deploy_pipelines -v
+        run: kald-devops --verbose deploy_pipelines

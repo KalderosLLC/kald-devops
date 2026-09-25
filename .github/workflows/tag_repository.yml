@@ -43,4 +43,4 @@ jobs:
           BRANCH: ${{ inputs.branch }}
           PDG_TAG_OR_BRANCH: ${{ inputs.pdg_tag_or_branch || inputs.branch }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: kald-devops tag_repository -v
+        run: kald-devops --verbose tag_repository

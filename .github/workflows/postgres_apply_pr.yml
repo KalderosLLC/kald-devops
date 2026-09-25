@@ -42,7 +42,7 @@ jobs:
           DB_HOST: ${{ inputs.db_host || secrets[format('POSTGRES_{0}_HOST', inputs.environment)] }}
           DB_USER: ${{ inputs.db_user || secrets[format('POSTGRES_{0}_USER', inputs.environment)] }}
           DB_PASSWORD: ${{ secrets[format('POSTGRES_{0}_PASSWORD', inputs.environment)] }}
-        run: kald-postgres-util apply_pr -v
+        run: kald-postgres-util --verbose apply_pr
 
       - name: Notify Slack
         if: always()
