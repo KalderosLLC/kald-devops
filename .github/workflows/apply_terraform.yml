@@ -31,5 +31,5 @@ jobs:
         env:
           ENVIRONMENTS: ${{ inputs.environments }}
           PR: ${{ inputs.pr }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PHOENIX_PAT }}
         run: kald-devops --verbose apply_terraform

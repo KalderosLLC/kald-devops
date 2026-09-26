@@ -1284,7 +1284,7 @@ def cmd_add_environment_to_pipelines(args, headers):
                 failures += 1
                 continue
 
-            log.info("✓ Added environment '%s' to %s (rank %d)", env_name, pipeline_name, new_env["rank"])
+            log.info("Added environment '%s' to %s (rank %d)", env_name, pipeline_name, new_env["rank"])
             success += 1
 
         except Exception as e:
@@ -1292,13 +1292,92 @@ def cmd_add_environment_to_pipelines(args, headers):
             failures += 1
 
     print()
-    print(f"✓ {success} successful, ✗ {failures} failed")
+    print(f"{success} successful, {failures} failed")
 
     if failures > 0:
         sys.exit(1)
 
+def _fetch_releases_for_definition(headers, encoded_project, definition_id):
+    """Read-only: list every release for definition_id, following continuation tokens.
+    Returns (releases, None) on success or (None, failing_response) on the first error."""
+    url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases"
+    params = {"definitionId": definition_id, "$top": 50, "api-version": "7.1"}
+    releases = []
+    while True:
+        resp = http_get(url, headers=headers, params=params)
+        if resp.status_code != 200:
+            return None, resp
+        releases.extend(resp.json().get("value", []))
+        continuation = resp.headers.get("x-ms-continuationtoken")
+        if not continuation:
+            return releases, None
+        params = {"definitionId": definition_id, "$top": 50, "api-version": "7.1", "continuationToken": continuation}
+
+def _find_release_artifact(headers, encoded_project, releases, source_release=None):
+    """Read-only: find an artifact instance ID to reuse for a new release.
+
+    If source_release is given, only releases whose name matches it (case-insensitively)
+    are considered; otherwise every release is a candidate, in API order. Returns
+    (artifact_id, matched_release_name) for the first candidate that actually has an
+    artifact, or (None, None) if none do."""
+    if source_release:
+        candidates = [r for r in releases if r.get("name", "").lower() == source_release.lower()]
+    else:
+        candidates = releases
+
+    for rel_summary in candidates:
+        rel_id = rel_summary["id"]
+        rel_name = rel_summary.get("name")
+        url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
+        resp_full = http_get(url_full, headers=headers)
+        if resp_full.status_code != 200:
+            continue
+        for artifact in resp_full.json().get("artifacts", []):
+            artifact_id = artifact.get("definitionReference", {}).get("version", {}).get("id")
+            if artifact_id:
+                log.debug("Found artifact ID %s in release %s", artifact_id, rel_name)
+                return artifact_id, rel_name
+    return None, None
+
+def _create_release_preflight(headers, encoded_project, pipeline_name, pipeline_def, source_release):
+    """Read-only: resolve everything needed to create a release for one pipeline -- the
+    Build artifact alias from its definition, and an existing artifact instance to reuse
+    (from source_release if given, otherwise the first release that has one). Returns
+    (pipeline_name, definition_id, artifact_alias, artifact_id, source_release_name,
+    error_msg_or_None). Issues no mutating requests."""
+    definition_id = pipeline_def["id"]
+    log.debug("Pre-flight: pipeline '%s' (id=%s)", pipeline_name, definition_id)
+
+    def_url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/definitions/{definition_id}?api-version=7.1"
+    def_resp = http_get(def_url, headers=headers)
+    if def_resp.status_code != 200:
+        msg = f"Failed to fetch definition: HTTP {def_resp.status_code} - {extract_error(def_resp.text)}"
+        return pipeline_name, definition_id, None, None, None, msg
+
+    definition = def_resp.json()
+    artifact_alias = next((a.get("alias") for a in definition.get("artifacts", []) if a.get("type") == "Build"), None)
+    if not artifact_alias:
+        return pipeline_name, definition_id, None, None, None, "No Build artifact found in pipeline definition"
+
+    releases, err_resp = _fetch_releases_for_definition(headers, encoded_project, definition_id)
+    if releases is None:
+        msg = f"Failed to fetch releases: HTTP {err_resp.status_code} - {extract_error(err_resp.text)}"
+        return pipeline_name, definition_id, artifact_alias, None, None, msg
+
+    artifact_id, source_release_name = _find_release_artifact(headers, encoded_project, releases, source_release)
+    if not artifact_id:
+        if source_release:
+            msg = f"Release '{source_release}' not found or has no artifacts"
+        else:
+            msg = "No releases found with a usable artifact"
+        return pipeline_name, definition_id, artifact_alias, None, None, msg
+
+    return pipeline_name, definition_id, artifact_alias, artifact_id, source_release_name, None
+
 def cmd_create_releases_from_artifact(args, headers):
-    """Create new releases from an artifact version (with new pipeline definition including Load)."""
+    """Create new releases for the given pipelines, reusing an existing build artifact
+    (SOURCE_RELEASE if given, otherwise the first release found with one). Does not modify
+    the pipeline's release definition itself."""
     pipelines_str = os.getenv("PIPELINES", "")
     source_release = os.getenv("SOURCE_RELEASE", "")
 
@@ -1313,111 +1392,42 @@ def cmd_create_releases_from_artifact(args, headers):
     else:
         log.info("Creating new releases from first available artifact across %d pipelines", len(pipelines))
 
+    encoded_project = requests.utils.quote(project)
+    all_defs = fetch_release_definitions(headers)
+
+    # Phase 1 -- pre-flight only: resolve the pipeline definition, artifact alias and artifact
+    # to reuse for every requested pipeline. Purely read-only (no POST calls yet), so nothing is
+    # created until every pipeline in the batch has been verified -- if any pipeline can't be
+    # resolved, the whole run aborts before a release is created for any pipeline.
+    preflight_results = []
+    preflight_errors = []
+    for pipeline_name in pipelines:
+        pipeline_def = next((p for p in all_defs if p.get("name", "").lower() == pipeline_name.lower()), None)
+        if not pipeline_def:
+            preflight_errors.append((pipeline_name, "Pipeline not found"))
+            continue
+        result = _create_release_preflight(headers, encoded_project, pipeline_name, pipeline_def, source_release)
+        preflight_results.append(result)
+        if result[-1] is not None:
+            preflight_errors.append((pipeline_name, result[-1]))
+
+    for pipeline_name, msg in preflight_errors:
+        log.error("%s: %s", pipeline_name, msg)
+
+    if preflight_errors:
+        log.error("Aborting: %d of %d pipeline(s) failed pre-flight checks — no releases were created for any pipeline.",
+                   len(preflight_errors), len(pipelines))
+        sys.exit(1)
+
+    # Phase 2 -- every pipeline passed pre-flight, so it's now safe to actually create releases.
     success = 0
     failures = 0
-    encoded_project = requests.utils.quote(project)
 
-    for pipeline_name in pipelines:
+    for pipeline_name, definition_id, artifact_alias, artifact_id, source_release_name, _msg in preflight_results:
         try:
-            # Find pipeline definition
-            pipelines_data = fetch_release_definitions(headers)
-            pipeline_def = next((p for p in pipelines_data if p.get("name") == pipeline_name), None)
-
-            if not pipeline_def:
-                log.error("Pipeline not found: %s", pipeline_name)
-                failures += 1
-                continue
-
-            definition_id = pipeline_def["id"]
-            log.info("Processing pipeline: %s (id=%d)", pipeline_name, definition_id)
-
-            # Get artifact alias from pipeline definition
-            def_url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/definitions/{definition_id}?api-version=7.1"
-            def_resp = http_get(def_url, headers=headers)
-            if def_resp.status_code != 200:
-                log.error("Failed to fetch definition for %s: %s", pipeline_name, def_resp.text[:200])
-                failures += 1
-                continue
-
-            definition = def_resp.json()
-            artifact_alias = next((a.get("alias") for a in definition.get("artifacts", []) if a.get("type") == "Build"), None)
-            if not artifact_alias:
-                log.error("No Build artifact found in pipeline definition for %s", pipeline_name)
-                failures += 1
-                continue
-
-            log.debug("Using artifact alias: %s", artifact_alias)
-
-            # Get releases to find artifact ID matching the version
-            url = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases?definitionId={definition_id}&$top=100&api-version=7.1"
-            resp = http_get(url, headers=headers)
-            if resp.status_code != 200:
-                log.error("Failed to fetch releases for %s: %s", pipeline_name, resp.text[:200])
-                failures += 1
-                continue
-
-            releases_summary = resp.json().get("value", [])
-
-            # Find an artifact by source release name or first available
-            artifact_id = None
-            source_release_name = None
-
-            if source_release:
-                # Search for specific release
-                for rel_summary in releases_summary:
-                    if rel_summary.get("name") == source_release:
-                        rel_id = rel_summary["id"]
-                        url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
-                        resp_full = http_get(url_full, headers=headers)
-                        if resp_full.status_code == 200:
-                            rel_full = resp_full.json()
-                            for artifact in rel_full.get("artifacts", []):
-                                ver_ref = artifact.get("definitionReference", {}).get("version", {})
-                                artifact_vid = ver_ref.get("id", "")
-                                if artifact_vid:
-                                    artifact_id = artifact_vid
-                                    source_release_name = source_release
-                                    log.debug("Found artifact ID %s in release %s", artifact_id, source_release)
-                                    break
-                        break
-
-                if not artifact_id:
-                    log.warning("Release '%s' not found or has no artifacts in %s", source_release, pipeline_name)
-                    failures += 1
-                    continue
-            else:
-                # Use first available artifact
-                for rel_summary in releases_summary:
-                    rel_id = rel_summary["id"]
-                    rel_name = rel_summary.get("name")
-
-                    url_full = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases/{rel_id}?api-version=7.1"
-                    resp_full = http_get(url_full, headers=headers)
-                    if resp_full.status_code != 200:
-                        continue
-
-                    rel_full = resp_full.json()
-                    for artifact in rel_full.get("artifacts", []):
-                        ver_ref = artifact.get("definitionReference", {}).get("version", {})
-                        artifact_vid = ver_ref.get("id", "")
-                        if artifact_vid:
-                            artifact_id = artifact_vid
-                            source_release_name = rel_name
-                            log.debug("Found artifact ID %s in release %s", artifact_id, rel_name)
-                            break
-
-                    if artifact_id:
-                        break
-
-                if not artifact_id:
-                    log.warning("No releases found with artifact in %s", pipeline_name)
-                    failures += 1
-                    continue
-
-            # Create new release with this artifact
             release_body = {
                 "definitionId": definition_id,
-                "description": f"Created from artifact with updated pipeline definition (includes Load environment)",
+                "description": f"Created from artifact of release '{source_release_name}' via create_releases_from_artifact",
                 "artifacts": [{"alias": artifact_alias, "instanceReference": {"id": artifact_id}}],
                 "isDraft": False,
                 "reason": "manualUsingArtifacts"
@@ -1426,13 +1436,14 @@ def cmd_create_releases_from_artifact(args, headers):
             url_create = f"https://vsrm.dev.azure.com/{organization}/{encoded_project}/_apis/release/releases?api-version=7.1"
             resp_create = http_post(url_create, headers=headers, json=release_body)
 
-            if resp_create.status_code not in [200, 201]:
+            if resp_create.status_code not in (200, 201):
                 log.error("Failed to create release for %s: HTTP %d: %s", pipeline_name, resp_create.status_code, resp_create.text[:300])
                 failures += 1
                 continue
 
             new_release = resp_create.json()
-            log.info("✓ Created release %s (id=%d) from artifact %s", new_release.get("name"), new_release.get("id"), artifact_id)
+            log.info("Created release %s (id=%d) for %s from artifact of release '%s'",
+                      new_release.get("name"), new_release.get("id"), pipeline_name, source_release_name)
             success += 1
 
         except Exception as e:
@@ -1440,7 +1451,7 @@ def cmd_create_releases_from_artifact(args, headers):
             failures += 1
 
     print()
-    print(f"✓ {success} successful, ✗ {failures} failed")
+    print(f"{success} successful, {failures} failed")
 
     if failures > 0:
         sys.exit(1)
@@ -1758,7 +1769,7 @@ def parse_semver(tag):
 def resolve_from_tag(gh_headers, repository, prefix, major, minor):
     target_minor = minor - 1
     tag_prefix = f"{prefix}{major}.{target_minor}."
-    log.debug("resolve_from_tag: repository=%s prefix=%r major=%s minor=%s → searching for tags starting with %r",
+    log.debug("resolve_from_tag: repository=%s prefix=%r major=%s minor=%s -- searching for tags starting with %r",
               repository, prefix, major, minor, tag_prefix)
     matching = []
     page = 1
@@ -1859,7 +1870,7 @@ def cmd_git_tickets(args):
         log.error("TAG '%s' does not conform to semantic versioning (e.g. v1.21.0)", tag)
         sys.exit(1)
     prefix, major, minor, patch = parsed_tag
-    log.debug("Parsed TAG '%s' → prefix=%r major=%s minor=%s patch=%s", tag, prefix, major, minor, patch)
+    log.debug("Parsed TAG '%s' -- prefix=%r major=%s minor=%s patch=%s", tag, prefix, major, minor, patch)
 
     gh_headers = make_gh_headers(github_token)
     log.debug("GITHUB_TOKEN present: %s", bool(github_token))
@@ -2607,10 +2618,10 @@ def cmd_slack_release(args):
 
     message = "\n".join([
         "Truzo Release",
-        f"• Date: {today}",
-        f"• Branch or tag: {branch_or_tag}",
-        f"• Release notes: {release_notes_url}",
-        f"• Environments: {environments}",
+        f"- Date: {today}",
+        f"- Branch or tag: {branch_or_tag}",
+        f"- Release notes: {release_notes_url}",
+        f"- Environments: {environments}",
     ])
     print(message)
 
@@ -2722,7 +2733,7 @@ def main():
     subparsers.add_parser("calc_pr", help="Print the PR whose terraform-plan-eastus.yml run last succeeded (GITHUB_TOKEN)")
     subparsers.add_parser("deploy_pipelines", help="Trigger deployments for release pipelines matching BRANCH_OR_TAG to ENVIRONMENTS (filter via PIPELINES)")
     subparsers.add_parser("add_environment_to_pipelines", help="Add a new environment to release pipeline definitions (PIPELINES, ENVIRONMENT_NAME)")
-    subparsers.add_parser("create_releases_from_artifact", help="Create new releases from an artifact with updated pipeline definition (PIPELINES, SOURCE_RELEASE optional)")
+    subparsers.add_parser("create_releases_from_artifact", help="Create new releases for pipelines, reusing an existing artifact (PIPELINES, SOURCE_RELEASE optional)")
     subparsers.add_parser("tag_repository", help="Create and push a git tag from a source branch (BRANCH -> NAME)")
     subparsers.add_parser("list_repositories", help="List all repositories under the KalderosLLC GitHub org")
     subparsers.add_parser("create_release_notes", help="Create a GitHub release with auto-generated release notes (REPOSITORY, TAG)")

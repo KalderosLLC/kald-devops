@@ -32,5 +32,5 @@ jobs:
         env:
           ENVIRONMENTS: ${{ inputs.environments }}
           BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PHOENIX_PAT }}
         run: kald-devops --verbose apply_flyway
