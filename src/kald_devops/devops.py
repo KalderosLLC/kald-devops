@@ -177,46 +177,8 @@ def fetch_build_def_repo(headers, definition_id):
     resp = http_get(url, headers=headers)
     return resp.json().get("repository", {}).get("name", "-") if resp.status_code == 200 else "-"
 
-def _build_preflight(definition, source_branch, headers, skip_existing_check=False):
-    """Read-only: check whether a build artifact already exists for source_branch on this
-    pipeline. Returns (definition_id, definition_name, error_msg_or_None). Issues no mutating
-    requests. Pass skip_existing_check=True to bypass the existing build check (FORCE_REBUILD)."""
-    definition_id = definition["id"]
-    definition_name = definition["name"]
-
-    if skip_existing_check:
-        log.debug("%s: skipping existing build check (FORCE_REBUILD)", definition_name)
-        return definition_id, definition_name, None
-
-    url = (
-        f"https://dev.azure.com/{organization}/{project}/"
-        f"_apis/build/builds?api-version=7.1-preview.7"
-    )
-    params = {
-        "definitions": definition_id,
-        "branchName": source_branch,
-        "$top": 1,
-    }
-    resp = http_get(url, headers=headers, params=params)
-    if resp.status_code != 200:
-        msg = f"Failed to check existing builds: HTTP {resp.status_code} - {extract_error(resp.text)}"
-        log.error("%s: %s", definition_name, msg)
-        return definition_id, definition_name, msg
-
-    existing_builds = resp.json().get("value", [])
-    if existing_builds:
-        existing = existing_builds[0]
-        build_id = existing.get("id")
-        build_number = existing.get("buildNumber", str(build_id))
-        msg = f"A build artifact already exists for '{source_branch}' (build {build_number}, ID {build_id}) — refusing to rebuild"
-        log.error("%s: %s", definition_name, msg)
-        return definition_id, definition_name, msg
-
-    return definition_id, definition_name, None
-
 def cmd_build(args, headers):
     branch_or_tag = os.getenv("BRANCH_OR_TAG", "main")
-    force_rebuild = str(os.getenv("FORCE_REBUILD", "")).strip().lower() in ("1", "true", "yes")
 
     if SEMVER_RE.match(branch_or_tag):
         source_branch = f"refs/tags/{branch_or_tag}"
@@ -225,10 +187,6 @@ def cmd_build(args, headers):
         source_branch = f"refs/heads/{branch_or_tag}"
         log.debug("BRANCH_OR_TAG='%s' does not match semver — treating as a branch", branch_or_tag)
     log.debug("Building from: %s", source_branch)
-
-    if force_rebuild:
-        log.warning("FORCE_REBUILD is set -- bypassing the 'existing build' pre-flight check. "
-                    "Every pipeline will be triggered regardless of whether a build already exists.")
 
     all_defs = fetch_build_pipelines(headers)
 
@@ -269,25 +227,6 @@ def cmd_build(args, headers):
     folder_defs = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
 
     log.debug("Found %d pipeline(s) to build", len(folder_defs))
-
-    # Pre-flight: verify none of the selected pipelines already have a build artifact for
-    # source_branch. Purely read-only (no trigger requests yet), so nothing is built until every
-    # pipeline in the batch has been verified — if any pipeline already has an artifact for this
-    # tag/branch, the whole run aborts before triggering a build for any pipeline. Pass
-    # skip_existing_check=True (FORCE_REBUILD) to bypass this check.
-    with ThreadPoolExecutor() as executor:
-        preflight_futures = [
-            executor.submit(_build_preflight, definition, source_branch, headers, force_rebuild)
-            for definition in folder_defs
-        ]
-        preflight_results = [f.result() for f in preflight_futures]
-
-    preflight_errors = [(did, dname, msg) for did, dname, msg in preflight_results if msg is not None]
-
-    if preflight_errors:
-        log.error("Aborting: %d pipeline(s) already have a build artifact for '%s' — no builds were triggered for any pipeline.",
-                   len(preflight_errors), source_branch)
-        sys.exit(1)
 
     trigger_url = (
         f"https://dev.azure.com/{organization}/{project}/"
@@ -872,9 +811,9 @@ def cmd_list_recent_builds(args, headers):
     print_table(table, args)
     sys.exit(0)
 
-def _deploy_preflight(rd, source_ref, branch, environments_list, headers, skip_already_deployed_check=False):
+def _deploy_preflight(rd, source_ref, branch, environments_list, headers):
     """Read-only: resolve the release built from source_ref and determine which of the
-    requested environments actually need a deployment triggered. Returns
+    requested environments actually exist in it. Returns
     (definition_id, definition_name, error_msg_or_None, release_info_or_None).
 
     - If no release can be resolved for source_ref (i.e. TAG_OR_BRANCH doesn't exist for this
@@ -883,16 +822,9 @@ def _deploy_preflight(rd, source_ref, branch, environments_list, headers, skip_a
       any deployment is triggered for any pipeline.
     - If the release is resolved but is missing one or more of the requested environments,
       that's only a WARNING (logged here, non-fatal).
-    - If a requested environment already has this exact release successfully deployed to it,
-      BRANCH_OR_TAG is already in the desired state there — that's also only a WARNING, and no
-      redeploy is queued for that environment. This check compares against the newest EXISTING
-      release object for source_ref, which can be stale if no fresh build/release has been
-      created since source_ref last moved -- pass skip_already_deployed_check=True (wired to
-      FORCE_REDEPLOY) to bypass it and always deploy to every environment that exists in the
-      found release, regardless of its recorded status.
-    - release_info["valid_environments"] holds the subset of requested environments that both
-      exist in the release and (unless bypassed) are not already deployed — that's what gets
-      triggered.
+    - release_info["valid_environments"] holds the subset of requested environments that exist
+      in the release -- that's what gets triggered, regardless of whatever is already deployed
+      there.
 
     Issues no mutating requests."""
     definition_id = rd["id"]
@@ -947,24 +879,12 @@ def _deploy_preflight(rd, source_ref, branch, environments_list, headers, skip_a
         f"_releaseProgress?releaseId={rid}&_a=release-pipeline-progress"
     )
     release_env_map = {e.get("name", "").lower(): e["id"] for e in full_release.get("environments", [])}
-    release_env_status = {e.get("name", "").lower(): e.get("status", "") for e in full_release.get("environments", [])}
 
     missing_environments = [e for e in environments_list if e.lower() not in release_env_map]
     for e in missing_environments:
         log.warning("%s: environment/stage '%s' not present in this release, skipping", definition_name, e)
 
-    existing_environments = [e for e in environments_list if e.lower() in release_env_map]
-
-    if skip_already_deployed_check:
-        already_deployed = []
-    else:
-        # BRANCH_OR_TAG represents the desired state: if this exact release has already succeeded
-        # in an environment, that environment is already where it needs to be -- don't redeploy it.
-        already_deployed = [e for e in existing_environments if release_env_status.get(e.lower(), "").lower() == "succeeded"]
-    for e in already_deployed:
-        log.warning("%s / %s: '%s' is already deployed to this environment, skipping", definition_name, e, branch)
-
-    valid_environments = [e for e in existing_environments if e not in already_deployed]
+    valid_environments = [e for e in environments_list if e.lower() in release_env_map]
 
     release_info = {
         "rid": rid,
@@ -1013,7 +933,6 @@ def _deploy_trigger(definition_id, definition_name, release_info, branch, header
 def cmd_deploy(args, headers):
     branch_or_tag = os.getenv("BRANCH_OR_TAG")
     raw_envs = os.getenv("ENVIRONMENTS")
-    force_redeploy = str(os.getenv("FORCE_REDEPLOY", "")).strip().lower() in ("1", "true", "yes")
 
     missing = [name for name, val in [("BRANCH_OR_TAG", branch_or_tag), ("ENVIRONMENTS", raw_envs)] if not val]
     if missing:
@@ -1021,11 +940,6 @@ def cmd_deploy(args, headers):
         for name in missing:
             log.error("Missing required environment variable: %s", name)
         sys.exit(1)
-
-    if force_redeploy:
-        log.warning("FORCE_REDEPLOY is set -- bypassing the 'already deployed' pre-flight check. "
-                    "Every pipeline/environment where the release exists will be (re)triggered "
-                    "regardless of its currently recorded status.")
 
     if SEMVER_RE.match(branch_or_tag):
         source_ref = f"refs/tags/{branch_or_tag}"
@@ -1114,15 +1028,15 @@ def cmd_deploy(args, headers):
     log.debug("Deploying %d pipeline(s) from '%s' (%s) to: %s", len(folder_defs), branch_or_tag, source_ref, environments_list)
 
     # Phase 1 — pre-flight only: resolve the release for every pipeline and check which of the
-    # requested environments/stages actually need a deployment. Purely read-only (no PATCH calls
-    # yet), so nothing is triggered until every pipeline in the batch has been verified. A
-    # pipeline missing an environment/stage, or one where BRANCH_OR_TAG is already deployed to an
-    # environment, only logs a warning and is skipped for that environment (see
+    # requested environments/stages actually exist in it. Purely read-only (no PATCH calls yet),
+    # so nothing is triggered until every pipeline in the batch has been verified. A pipeline
+    # missing an environment/stage only logs a warning and is skipped for that environment (see
     # _deploy_preflight); a pipeline with no release for TAG_OR_BRANCH is an error and aborts the
-    # whole run before any pipeline is triggered.
+    # whole run before any pipeline is triggered. Every environment that does exist in the
+    # release is (re)deployed regardless of what's already recorded as deployed there.
     with ThreadPoolExecutor() as executor:
         preflight_futures = [
-            executor.submit(_deploy_preflight, rd, source_ref, branch_or_tag, environments_list, headers, force_redeploy)
+            executor.submit(_deploy_preflight, rd, source_ref, branch_or_tag, environments_list, headers)
             for rd in folder_defs
         ]
         preflight_results = [f.result() for f in preflight_futures]
@@ -2511,7 +2425,6 @@ SUBCOMMAND_ENV_VARS = [
     ("build_pipelines",       "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
     ("build_pipelines",       "BRANCH_OR_TAG",         "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to build from (default: main)"),
     ("build_pipelines",       "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("build_pipelines",       "FORCE_REBUILD",         "optional", "Set to 1/true to bypass the 'existing build' pre-flight check and force a rebuild even if one already exists"),
     ("calc_pr",                "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
     ("apply_terraform",       "GITHUB_TOKEN",          "required", "GitHub personal access token with workflow scope"),
     ("apply_terraform",       "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
@@ -2521,7 +2434,6 @@ SUBCOMMAND_ENV_VARS = [
     ("apply_flyway",          "BRANCH_OR_TAG",         "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main); verified before dispatch (default: main)"),
     ("deploy_pipelines",      "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
     ("deploy_pipelines",      "BRANCH_OR_TAG",         "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to deploy from"),
-    ("deploy_pipelines",      "FORCE_REDEPLOY",        "optional", "Set to 1/true to bypass the 'already deployed' pre-flight check (TEMPORARY -- see known issue re: stale release detection for branches)"),
     ("deploy_pipelines",      "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
     ("deploy_pipelines",      "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
     ("teams_release",         "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
