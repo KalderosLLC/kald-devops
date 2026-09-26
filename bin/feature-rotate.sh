@@ -25,7 +25,8 @@ Push current branch and create a PR to main (or specified branch).
 
 ${BLUE}OPTIONS:${NC}
   -B, --base-branch BRANCH    Base branch for PR (default: main)
-  -t, --title TITLE           PR title (default: "My work")
+  -t, --title TITLE           Commit message and PR title (default: "My work")
+  -m, --message MESSAGE       Alias for -t/--title
   -d, --description TEXT      PR description (default: "My Description")
   -f, --file FILE             Read description from file
   --no-merge                  Create PR without auto-merging (review only)
@@ -54,6 +55,9 @@ ${BLUE}EXAMPLES:${NC}
   # Custom title and description
   $(basename "$0") -t "Add new feature" -d "This adds X functionality"
 
+  # Same as -t/--title, using git-commit-style naming
+  $(basename "$0") -m "Add new feature"
+
 USAGE
   exit 0
 }
@@ -72,7 +76,7 @@ while [[ $# -gt 0 ]]; do
       BASE_BRANCH="$2"
       shift 2
       ;;
-    -t|--title)
+    -t|--title|-m|--message)
       PR_TITLE="$2"
       shift 2
       ;;
