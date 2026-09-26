@@ -36,9 +36,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
 
-      # Slack (optional, for notifications)
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
-      SLACK_CHANNEL: ${SLACK_CHANNEL}
+      # Microsoft Teams (optional, for notifications)
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
@@ -104,9 +103,8 @@ volumes:
 # POSTGRES_PASSWORD=secure_password
 # POSTGRES_DB=devops_db
 #
-# # Slack (optional)
-# SLACK_BOT_TOKEN=xoxb-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-# SLACK_CHANNEL=C1234567890
+# # Microsoft Teams (optional)
+# TEAMS_WEBHOOK_URL=https://your-tenant.webhook.office.com/webhookb2/...
 #
 # # Logging
 # LOG_LEVEL=INFO

@@ -42,7 +42,7 @@ All configuration is supplied via environment variables. See `kald-devops usage`
 - `apply_terraform` - Trigger the terraform-apply-eastus workflow
 - `apply_flyway` - Trigger the flywayMigration workflow
 - `deploy_pipelines` - Trigger Azure DevOps release pipeline deployments
-- `slack_release` - Prepare a release notification message for Slack
+- `teams_release` - Prepare a release notification message for Microsoft Teams
 
 ### kald-postgres-util
 
@@ -93,7 +93,6 @@ The repository includes GitHub Actions workflows for each major operation:
 - Python 3.9+
 - `requests`
 - `prettytable`
-- `slack-sdk`
 - `pyodbc` (optional, only needed for `kald-sqlserver-util`)
 
 ## Development

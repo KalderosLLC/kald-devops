@@ -24,17 +24,12 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    container: ghcr.io/kalderosllc/kald-devops/devops-tools:latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
       - name: Install kald-devops
-        run: |
-          pip install -e .
-          pip install requests prettytable slack-sdk
+        run: pip install -e .
 
       - name: Apply PostgreSQL PR
         env:
@@ -44,11 +39,17 @@ jobs:
           DB_PASSWORD: ${{ secrets[format('POSTGRES_{0}_PASSWORD', inputs.environment)] }}
         run: kald-postgres-util --verbose apply_pr
 
-      - name: Notify Slack
+      - name: Notify Teams
         if: always()
-        uses: 8398a7/action-slack@v3
-        with:
-          status: ${{ job.status }}
-          text: 'PostgreSQL apply_pr for ${{ inputs.environment }} - ${{ job.status }}'
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+          STATUS_TEXT: 'PostgreSQL apply_pr for ${{ inputs.environment }} - ${{ job.status }}'
+        run: |
+          if [ -n "$TEAMS_WEBHOOK_URL" ]; then
+            curl -sf -H "Content-Type: application/json" \
+              -d "$(jq -n --arg text "$STATUS_TEXT" '{"@type":"MessageCard","@context":"http://schema.org/extensions","summary":$text,"title":"PostgreSQL apply_pr","text":$text}')" \
+              "$TEAMS_WEBHOOK_URL"
+          else
+            echo "TEAMS_WEBHOOK_URL not set, skipping Teams notification"
+          fi
         continue-on-error: true
