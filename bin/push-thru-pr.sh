@@ -118,17 +118,17 @@ if [[ "$CURRENT_BRANCH" == "main" ]] && [[ "$BASE_BRANCH" == "main" ]]; then
   exit 1
 fi
 
-echo -e "${BLUE}Creating PR from $CURRENT_BRANCH → $BASE_BRANCH${NC}\n"
+echo -e "${BLUE}Creating PR from $CURRENT_BRANCH -> $BASE_BRANCH${NC}\n"
 
 # Stage and commit any uncommitted changes
 if [[ -n $(git status -s) ]]; then
-  echo "📝 Committing changes..."
+  echo "Committing changes..."
   git add -A
   git commit -m "$PR_TITLE"
 fi
 
 # Push current branch
-echo "📤 Pushing $CURRENT_BRANCH to origin..."
+echo "Pushing $CURRENT_BRANCH to origin..."
 git push -u origin "$CURRENT_BRANCH" 2>/dev/null || git push origin "$CURRENT_BRANCH"
 
 # Create the PR
@@ -139,7 +139,7 @@ else
   PR_URL=$(gh pr create --title "$PR_TITLE" --base "$BASE_BRANCH")
 fi
 
-echo -e "${GREEN}✅ PR created: $PR_URL${NC}\n"
+echo -e "${GREEN}PR created: $PR_URL${NC}\n"
 
 # Merge if requested
 if [[ "$AUTO_MERGE" == true ]]; then
@@ -151,8 +151,8 @@ if [[ "$AUTO_MERGE" == true ]]; then
     gh pr merge "$PR_URL" --admin --merge
   fi
 
-  echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
-  echo "✓ Changes merged to $BASE_BRANCH"
+  echo -e "\n${GREEN}PR merged successfully!${NC}"
+  echo "Changes merged to $BASE_BRANCH"
 
   # Retire $CURRENT_BRANCH and rotate onto a fresh feature-<epoch-millis> branch cut from a
   # freshly-fetched $BASE_BRANCH. This is what actually prevents this branch from ever
@@ -167,9 +167,9 @@ if [[ "$AUTO_MERGE" == true ]]; then
     git checkout -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
     git push -u origin "$NEW_BRANCH"
     git branch -d "$CURRENT_BRANCH" 2>/dev/null || true
-    echo -e "${GREEN}✅ Now on $NEW_BRANCH, tracking origin/$NEW_BRANCH${NC}"
+    echo -e "${GREEN}Now on $NEW_BRANCH, tracking origin/$NEW_BRANCH${NC}"
   fi
 else
-  echo -e "${GREEN}✅ PR ready for review${NC}"
+  echo -e "${GREEN}PR ready for review${NC}"
   echo "Review at: $PR_URL"
 fi
