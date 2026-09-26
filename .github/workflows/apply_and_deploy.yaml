@@ -1,0 +1,82 @@
+name: 2. Apply TF and FlyWay migrations, then Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environments:
+        description: 'Comma-delimited target environments (e.g., Stage,Prod) -- used for the Terraform apply, the Flyway migration, and the deployment'
+        required: true
+        type: string
+      branch_or_tag:
+        description: 'Semver tag (e.g., v1.21.0) or branch name -- used for the Flyway migration and the deployment'
+        required: true
+        type: string
+      pr:
+        description: 'Pull request number for the Terraform apply (defaults to last merged PR on main)'
+        required: false
+        type: string
+      pipelines:
+        description: 'Comma-delimited Azure DevOps pipeline IDs or repository paths to deploy'
+        required: true
+        type: string
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Apply Terraform
+        env:
+          ENVIRONMENTS: ${{ inputs.environments }}
+          PR: ${{ inputs.pr }}
+          GITHUB_TOKEN: ${{ secrets.PHOENIX_PAT }}
+        run: kald-devops --verbose apply_terraform
+
+  flyway:
+    needs: terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Apply Flyway
+        env:
+          ENVIRONMENTS: ${{ inputs.environments }}
+          BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
+          GITHUB_TOKEN: ${{ secrets.PHOENIX_PAT }}
+        run: kald-devops --verbose apply_flyway
+
+  deploy:
+    needs: flyway
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Deploy pipelines
+        env:
+          PIPELINES: ${{ inputs.pipelines }}
+          ENVIRONMENTS: ${{ inputs.environments }}
+          BRANCH_OR_TAG: ${{ inputs.branch_or_tag }}
+          AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
+        run: kald-devops --verbose deploy_pipelines
