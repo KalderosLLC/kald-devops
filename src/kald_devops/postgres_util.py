@@ -294,7 +294,7 @@ def verify_expected_results(expected: dict[str, int] | None, actual: dict[str, i
     and cannot verify a header with no numeric counts at all. Either case is
     treated as a failure, not just a numeric mismatch."""
     if expected is None:
-        return False, "No 'Expected Results' header found in the SQL file — cannot verify row counts."
+        return False, "No 'Expected Results' header found in the SQL file - cannot verify row counts."
     if not expected:
         return False, "'Expected Results' header has no numeric row counts to verify against."
     mismatches = [
@@ -303,7 +303,7 @@ def verify_expected_results(expected: dict[str, int] | None, actual: dict[str, i
         if actual.get(category, 0) != expected_count
     ]
     if mismatches:
-        return False, "Row count mismatch — " + "; ".join(mismatches)
+        return False, "Row count mismatch - " + "; ".join(mismatches)
     return True, f"Row counts match expected results: {expected}"
 
 
@@ -319,7 +319,7 @@ def lint_sql_script(content: str) -> list[dict]:
             "name": "self-managed transaction control",
             "passed": False,
             "detail": (
-                f"issues its own {self_txn}; statement — apply_pr's outer BEGIN ... ROLLBACK "
+                f"issues its own {self_txn}; statement - apply_pr's outer BEGIN ... ROLLBACK "
                 "wrapper cannot safely test this script; a self-COMMIT would commit for real "
                 "even without COMMIT=True."
             ),
@@ -507,7 +507,7 @@ class PostgresConfigManager:
         log.info("Connected. Type SQL ending with ';' to execute. Type \\q or quit to exit.")
 
         try:
-            import readline  # noqa: F401 — enables arrow-key editing and history
+            import readline  # noqa: F401 - enables arrow-key editing and history
         except ImportError:
             pass
 
@@ -599,7 +599,7 @@ class PostgresConfigManager:
 
     def _run_sql_file(self, config: dict, file_path: str, commit: bool) -> tuple[int, str]:
         if not shutil.which("psql"):
-            log.error("'psql' not found on PATH — install the PostgreSQL client tools.")
+            log.error("'psql' not found on PATH - install the PostgreSQL client tools.")
             return 1, ""
 
         finalizer = "COMMIT" if commit else "ROLLBACK"
@@ -621,9 +621,9 @@ class PostgresConfigManager:
         env["PGPASSWORD"] = config["DB_PASSWORD"]
 
         if commit:
-            log.info("Executing '%s' — changes WILL be committed.", file_path)
+            log.info("Executing '%s' - changes WILL be committed.", file_path)
         else:
-            log.info("Dry run: executing '%s' — changes will be rolled back.", file_path)
+            log.info("Dry run: executing '%s' - changes will be rolled back.", file_path)
 
         # Capture combined stdout/stderr (psql sends RAISE NOTICE output to stderr)
         # while still streaming it to the terminal live, so callers can parse it
@@ -637,7 +637,7 @@ class PostgresConfigManager:
         output = "".join(lines)
 
         if proc.returncode != 0:
-            log.error("psql exited with code %d — transaction was rolled back.", proc.returncode)
+            log.error("psql exited with code %d - transaction was rolled back.", proc.returncode)
             return 1, output
 
         return 0, output
@@ -660,9 +660,9 @@ class PostgresConfigManager:
         rc, _ = self._run_sql_file(config, file_path, commit)
         if rc == 0:
             if commit:
-                log.info("Execution complete — changes committed.")
+                log.info("Execution complete - changes committed.")
             else:
-                log.info("Dry run complete — transaction was rolled back, no changes committed.")
+                log.info("Dry run complete - transaction was rolled back, no changes committed.")
         return rc
 
     # ------------------------------------------------------------------
@@ -729,15 +729,15 @@ class PostgresConfigManager:
             log.info("Rollback-only test run of '%s' against environment='%s'", path, environment)
             rc, output = self._run_sql_file(config, tmp_path, commit=False)
             if rc != 0:
-                log.error("Rollback-only test run failed — not attempting a commit.")
+                log.error("Rollback-only test run failed - not attempting a commit.")
                 return 1
-            log.info("Dry run complete — transaction was rolled back, no changes committed.")
+            log.info("Dry run complete - transaction was rolled back, no changes committed.")
 
             actual_counts = parse_actual_counts(output)
             verified, message = verify_expected_results(expected_counts, actual_counts)
             if not verified:
                 log.error("Verification against the SQL file's 'Expected Results' failed: %s", message)
-                log.error("Not proceeding — the rollback test succeeded, but its results could not be "
+                log.error("Not proceeding - the rollback test succeeded, but its results could not be "
                           "confirmed against the script's declared expectations.")
                 return 1
             log.info("Verification passed: %s", message)
@@ -746,7 +746,7 @@ class PostgresConfigManager:
                 log.info("Rollback-only test run succeeded and verified. Set COMMIT=True to apply for real.")
                 return 0
 
-            log.info("Rollback-only test run succeeded and verified, and COMMIT=True — applying '%s' for real.", path)
+            log.info("Rollback-only test run succeeded and verified, and COMMIT=True - applying '%s' for real.", path)
             rc, commit_output = self._run_sql_file(config, tmp_path, commit=True)
             if rc != 0:
                 return rc
@@ -765,7 +765,7 @@ class PostgresConfigManager:
                     commit_message,
                 )
 
-            log.info("Execution complete — changes committed.")
+            log.info("Execution complete - changes committed.")
             return rc
         finally:
             os.remove(tmp_path)
