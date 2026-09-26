@@ -1,0 +1,103 @@
+name: 1. Tag, Document, and build repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag name to create (e.g., v1.21.0-rc) -- also used as the release notes tag and the build ref'
+        required: true
+        type: string
+      repositories:
+        description: 'Comma-separated repository paths to tag (e.g., KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway)'
+        required: true
+        type: string
+      branch:
+        description: 'Source branch to tag (default: main)'
+        required: false
+        default: 'main'
+        type: string
+      pdg_tag_or_branch:
+        description: 'Tag or branch for phoenix-data-gateway (default: same as branch); only relevant if KalderosLLC/phoenix is included in REPOSITORIES'
+        required: false
+        type: string
+      pipelines:
+        description: 'Comma-delimited Azure DevOps pipeline IDs or repository paths to build'
+        required: true
+        type: string
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Tag Repository
+        env:
+          TAG: ${{ inputs.tag }}
+          REPOSITORIES: ${{ inputs.repositories }}
+          BRANCH: ${{ inputs.branch }}
+          PDG_TAG_OR_BRANCH: ${{ inputs.pdg_tag_or_branch || inputs.branch }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: kald-devops --verbose tag_repository
+
+  document:
+    needs: tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Create Release Notes
+        env:
+          REPOSITORIES: ${{ inputs.repositories }}
+          TAG: ${{ inputs.tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          IFS=',' read -ra REPOS <<< "$REPOSITORIES"
+          failures=0
+          for repo in "${REPOS[@]}"; do
+            repo="$(echo "$repo" | xargs)"
+            [ -z "$repo" ] && continue
+            echo "::group::Create Release Notes for $repo"
+            if ! REPOSITORY="$repo" kald-devops --verbose create_release_notes; then
+              failures=$((failures + 1))
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$failures" -gt 0 ]; then
+            echo "$failures repository(ies) failed to get release notes" >&2
+            exit 1
+          fi
+
+  build:
+    needs: document
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install kald-devops
+        run: pip install -e .
+
+      - name: Build pipelines
+        env:
+          PIPELINES: ${{ inputs.pipelines }}
+          BRANCH_OR_TAG: ${{ inputs.tag }}
+          AZURE_DEVOPS_EXT_PAT: ${{ secrets.AZURE_DEVOPS_EXT_PAT }}
+        run: kald-devops --verbose build_pipelines
