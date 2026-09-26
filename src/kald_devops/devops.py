@@ -9,7 +9,6 @@ import os
 import re
 import shutil
 import sys
-import threading
 import time
 import requests
 import base64
@@ -135,11 +134,25 @@ def make_gh_headers(token):
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
-def make_slack_headers(token):
-    return {
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json; charset=utf-8",
+def post_to_teams_webhook(webhook_url, title, message):
+    """POST message to a Microsoft Teams Incoming Webhook (or an equivalent Power Automate flow
+    trigger configured to accept the same shape) as a MessageCard. Returns True on success;
+    logs and returns False on failure."""
+    payload = {
+        "@type": "MessageCard",
+        "@context": "http://schema.org/extensions",
+        "summary": title,
+        "title": title,
+        "text": message,
     }
+    resp = http_post(webhook_url, json=payload)
+    # A Teams Incoming Webhook returns plain-text "1" on success rather than a JSON body (unlike
+    # Slack's {"ok": ...} convention) -- a Power Automate flow trigger typically answers 202 with
+    # an empty body instead. Treat any 2xx as success.
+    if not (200 <= resp.status_code < 300):
+        log.error("Failed to post to Teams webhook: HTTP %d - %s", resp.status_code, resp.text[:300])
+        return False
+    return True
 
 # =============================================================================
 # Build pipeline helpers  (dev.azure.com build definitions)
@@ -1993,8 +2006,15 @@ def cmd_create_release_notes(args):
 # =============================================================================
 
 def fetch_triggered_run_url(gh_headers, workflow_file, triggered_at, retries=5, delay=2,
-                            seen_urls=None, seen_lock=None, repo="KalderosLLC/phoenix"):
-    """Return (html_url, run_id) for the newly-dispatched workflow run, or (None, None)."""
+                            repo="KalderosLLC/phoenix"):
+    """Return (html_url, run_id) for the newly-dispatched workflow run, or (None, None).
+
+    The GitHub REST API doesn't hand back a run ID from the dispatch call itself, so this
+    infers it by polling the workflow's recent runs for the first one created at/after
+    triggered_at. That inference is only unambiguous if no other dispatch of the same
+    workflow is in flight concurrently -- callers MUST trigger and claim runs one at a time
+    (not fire multiple dispatches in parallel and then race to claim), or two runs created
+    moments apart can get attributed to the wrong caller."""
     runs_url = (
         f"https://api.github.com/repos/{repo}/actions/workflows/"
         f"{workflow_file}/runs?per_page=20"
@@ -2008,20 +2028,14 @@ def fetch_triggered_run_url(gh_headers, workflow_file, triggered_at, retries=5, 
             created_at = datetime.fromisoformat(run["created_at"].replace("Z", "+00:00"))
             if created_at < triggered_at:
                 continue
-            url = run["html_url"]
-            run_id = run["id"]
-            if seen_urls is None:
-                return url, run_id
-            with seen_lock:
-                if url not in seen_urls:
-                    seen_urls.add(url)
-                    return url, run_id
+            return run["html_url"], run["id"]
     return None, None
 
 
 def poll_gh_run(gh_headers, repo, run_id, poll_interval=10, timeout=1800):
     """Block until a GitHub Actions run completes. Returns (status_str, reason_str_or_None)."""
     url = f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
+    run_url = f"https://github.com/{repo}/actions/runs/{run_id}"
     started = time.time()
     deadline = started + timeout
     while time.time() < deadline:
@@ -2031,7 +2045,7 @@ def poll_gh_run(gh_headers, repo, run_id, poll_interval=10, timeout=1800):
             if run.get("status") == "completed":
                 conclusion = run.get("conclusion") or "unknown"
                 return conclusion, (None if conclusion == "success" else conclusion)
-            log.info("Still waiting on %s run %s (%s, %ds elapsed)...", repo, run_id, run.get("status", "unknown"), int(time.time() - started))
+            log.info("Still waiting (%s, %ds elapsed)... %s", run.get("status", "unknown"), int(time.time() - started), run_url)
         else:
             log.error("Polling %s/actions/runs/%s: HTTP %s - %s", repo, run_id, resp.status_code, extract_error(resp.text))
         time.sleep(poll_interval)
@@ -2068,6 +2082,10 @@ def poll_ado_environment(headers, rid, env_id, poll_interval=10, timeout=1800):
         f"https://vsrm.dev.azure.com/{organization}/{project}/"
         f"_apis/release/releases/{rid}/environments/{env_id}"
     )
+    release_url = (
+        f"https://dev.azure.com/{organization}/{requests.utils.quote(project, safe='')}/"
+        f"_releaseProgress?releaseId={rid}&_a=release-pipeline-progress"
+    )
     # Statuses that mean the environment is still working -- anything else (succeeded, or any
     # other value Azure DevOps reports, known or not) is treated as terminal, so the "on
     # failure" reason-extraction below applies to every non-succeeded terminal status rather
@@ -2088,7 +2106,7 @@ def poll_ado_environment(headers, rid, env_id, poll_interval=10, timeout=1800):
                     if not reason or reason == status:
                         reason = _extract_deploy_failure_reason(env, status)
                 return status, reason
-            log.info("Still waiting on release %s environment %s (%s, %ds elapsed)...", rid, env_id, status, int(time.time() - started))
+            log.info("Still waiting (%s, %ds elapsed)... %s", status, int(time.time() - started), release_url)
         else:
             log.error("Polling release %s environment %s: HTTP %s - %s", rid, env_id, resp.status_code, extract_error(resp.text))
         time.sleep(poll_interval)
@@ -2113,6 +2131,10 @@ def poll_ado_build(headers, build_id, poll_interval=10, timeout=1800):
     """Block until an Azure DevOps build completes. Returns
     (status_str, reason_str_or_None, duration_str)."""
     url = f"https://dev.azure.com/{organization}/{project}/_apis/build/builds/{build_id}?api-version=7.1-preview.7"
+    build_url = (
+        f"https://dev.azure.com/{organization}/{requests.utils.quote(project, safe='')}/"
+        f"_build/results?buildId={build_id}"
+    )
     started = time.time()
     deadline = started + timeout
     while time.time() < deadline:
@@ -2140,7 +2162,7 @@ def poll_ado_build(headers, build_id, poll_interval=10, timeout=1800):
                                     reason = issues[0].get("message", result)
                                     break
                 return result, reason, duration
-            log.info("Still waiting on build %s (%s, %ds elapsed)...", build_id, build.get("status", "unknown"), int(time.time() - started))
+            log.info("Still waiting (%s, %ds elapsed)... %s", build.get("status", "unknown"), int(time.time() - started), build_url)
         else:
             log.error("Polling build %s: HTTP %s - %s", build_id, resp.status_code, extract_error(resp.text))
         time.sleep(poll_interval)
@@ -2150,7 +2172,11 @@ def poll_ado_build(headers, build_id, poll_interval=10, timeout=1800):
 # Terraform
 # =============================================================================
 
-def _trigger_terraform_env(environment, pr, gh_headers, seen_urls, seen_lock):
+def _trigger_terraform_env(environment, pr, gh_headers):
+    """Dispatch terraform-apply-eastus for one environment and claim its run URL/ID before
+    returning. Must be called once at a time (not fanned out across a ThreadPoolExecutor) --
+    fetch_triggered_run_url can't tell two concurrently-created runs apart, so overlapping
+    calls risk attributing the wrong run to the wrong environment."""
     url = "https://api.github.com/repos/KalderosLLC/phoenix/actions/workflows/terraform-apply-eastus.yml/dispatches"
     triggered_at = datetime.now(timezone.utc)
     resp = http_post(url, headers=gh_headers, json={
@@ -2163,8 +2189,7 @@ def _trigger_terraform_env(environment, pr, gh_headers, seen_urls, seen_lock):
         log.error("Failed to trigger terraform-apply-eastus for '%s': %s", environment, msg)
         return environment, None, None
     log.debug("Triggered terraform-apply-eastus for PR #%s in environment '%s'", pr, environment)
-    run_url, run_id = fetch_triggered_run_url(gh_headers, "terraform-apply-eastus.yml", triggered_at,
-                                              seen_urls=seen_urls, seen_lock=seen_lock)
+    run_url, run_id = fetch_triggered_run_url(gh_headers, "terraform-apply-eastus.yml", triggered_at)
     if not run_url:
         log.warning("Could not determine run URL for environment '%s'", environment)
     return environment, run_url, run_id
@@ -2304,14 +2329,10 @@ def cmd_apply_terraform(args):
 
     gh_headers = make_gh_headers(github_token)
 
-    seen_urls: set = set()
-    seen_lock = threading.Lock()
-    with ThreadPoolExecutor() as executor:
-        futures = [
-            executor.submit(_trigger_terraform_env, env, pr, gh_headers, seen_urls, seen_lock)
-            for env in environments_list
-        ]
-        results = [f.result() for f in futures]
+    # Trigger and claim each environment's run one at a time -- see fetch_triggered_run_url's
+    # docstring for why fanning these out concurrently risks swapping run URLs between
+    # environments.
+    results = [_trigger_terraform_env(env, pr, gh_headers) for env in environments_list]
 
     triggered = [(env, url, run_id) for env, url, run_id in results if url]
     errors    = [env for env, url, run_id in results if url is None]
@@ -2357,7 +2378,11 @@ def cmd_apply_terraform(args):
 # Flyway
 # =============================================================================
 
-def _trigger_flyway_env(environment, branch_or_tag, gh_headers, seen_urls, seen_lock):
+def _trigger_flyway_env(environment, branch_or_tag, gh_headers):
+    """Dispatch flywayMigration for one environment and claim its run URL/ID before returning.
+    Must be called once at a time (not fanned out across a ThreadPoolExecutor) --
+    fetch_triggered_run_url can't tell two concurrently-created runs apart, so overlapping
+    calls risk attributing the wrong run to the wrong environment."""
     repo = "KalderosLLC/phoenix-data-gateway"
     url = f"https://api.github.com/repos/{repo}/actions/workflows/flywayMigration.yml/dispatches"
     triggered_at = datetime.now(timezone.utc)
@@ -2368,8 +2393,7 @@ def _trigger_flyway_env(environment, branch_or_tag, gh_headers, seen_urls, seen_
         log.error("Failed to trigger flywayMigration for '%s': %s", environment, msg)
         return environment, None, None
     log.debug("Triggered flywayMigration for environment '%s' from '%s'", environment, branch_or_tag)
-    run_url, run_id = fetch_triggered_run_url(gh_headers, "flywayMigration.yml", triggered_at,
-                                              seen_urls=seen_urls, seen_lock=seen_lock, repo=repo)
+    run_url, run_id = fetch_triggered_run_url(gh_headers, "flywayMigration.yml", triggered_at, repo=repo)
     if not run_url:
         log.warning("Could not determine run URL for environment '%s'", environment)
     return environment, run_url, run_id
@@ -2410,14 +2434,10 @@ def cmd_apply_flyway(args):
         sys.exit(1)
     log.debug("Verified %s '%s' exists in KalderosLLC/phoenix", "tag" if is_tag else "branch", branch_or_tag)
 
-    seen_urls: set = set()
-    seen_lock = threading.Lock()
-    with ThreadPoolExecutor() as executor:
-        futures = [
-            executor.submit(_trigger_flyway_env, env, branch_or_tag, gh_headers, seen_urls, seen_lock)
-            for env in environments_list
-        ]
-        results = [f.result() for f in futures]
+    # Trigger and claim each environment's run one at a time -- see fetch_triggered_run_url's
+    # docstring for why fanning these out concurrently risks swapping run URLs between
+    # environments.
+    results = [_trigger_flyway_env(env, branch_or_tag, gh_headers) for env in environments_list]
 
     triggered = [(env, url, run_id) for env, url, run_id in results if url]
     errors    = [env for env, url, run_id in results if url is None]
@@ -2504,12 +2524,9 @@ SUBCOMMAND_ENV_VARS = [
     ("deploy_pipelines",      "FORCE_REDEPLOY",        "optional", "Set to 1/true to bypass the 'already deployed' pre-flight check (TEMPORARY -- see known issue re: stale release detection for branches)"),
     ("deploy_pipelines",      "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
     ("deploy_pipelines",      "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("slack_find_channel",    "SLACK_BOT_TOKEN",        "required", "Slack bot OAuth token (xoxb-...) with channels:read scope (add groups:read for private channels)"),
-    ("slack_find_channel",    "NAME",                  "required", "Channel name to resolve to an ID (e.g. releases or #releases)"),
-    ("slack_release",         "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
-    ("slack_release",         "BRANCH_OR_TAG",         "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main)"),
-    ("slack_release",         "SLACK_BOT_TOKEN",        "optional", "Slack bot OAuth token (xoxb-...) with chat:write scope; must be set together with SLACK_CHANNEL to post"),
-    ("slack_release",         "SLACK_CHANNEL",         "optional", "Slack channel ID or name (e.g. C1234567890 or #releases); must be set together with SLACK_BOT_TOKEN to post"),
+    ("teams_release",         "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
+    ("teams_release",         "BRANCH_OR_TAG",         "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main)"),
+    ("teams_release",         "TEAMS_WEBHOOK_URL",     "optional", "Microsoft Teams Incoming Webhook (or equivalent Power Automate flow trigger) URL to post the release notification to"),
 ]
 
 _SUBCOMMAND_DESCS = [
@@ -2527,86 +2544,24 @@ _SUBCOMMAND_DESCS = [
     ("apply_terraform",      "Trigger the terraform-apply-eastus workflow"),
     ("apply_flyway",         "Trigger the flywayMigration workflow"),
     ("deploy_pipelines",     "Trigger Azure DevOps release pipeline deployments"),
-    ("slack_find_channel",   "Resolve a Slack channel name to its ID (SLACK_BOT_TOKEN, NAME)"),
-    ("slack_release",        "Prepare a release notification message, and post it to Slack if SLACK_BOT_TOKEN/SLACK_CHANNEL are set"),
+    ("teams_release",        "Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set"),
 ]
 
-def fetch_slack_channels(slack_bot_token, types="public_channel,private_channel"):
-    """Return all Slack channels visible to the bot (paginated via cursor), or None if the
-    fetch failed (error already logged)."""
-    headers = make_slack_headers(slack_bot_token)
-    channels = []
-    cursor = None
-    while True:
-        params = {"types": types, "limit": 200}
-        if cursor:
-            params["cursor"] = cursor
-        resp = http_get("https://slack.com/api/conversations.list", headers=headers, params=params)
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-        if resp.status_code != 200 or not body.get("ok"):
-            log.error("Failed to list Slack channels: %s - %s", resp.status_code, body.get("error", resp.text))
-            return None
-        channels.extend(body.get("channels", []))
-        cursor = body.get("response_metadata", {}).get("next_cursor")
-        if not cursor:
-            break
-    return channels
-
-
-def cmd_slack_find_channel(args):
-    slack_bot_token = os.getenv("SLACK_BOT_TOKEN")
-    name = os.getenv("NAME")
-
-    missing = [n for n, v in [("SLACK_BOT_TOKEN", slack_bot_token), ("NAME", name)] if not v]
-    if missing:
-        print_subcommand_usage("slack_find_channel")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
-
-    target = name.lstrip("#").lower()
-
-    channels = fetch_slack_channels(slack_bot_token)
-    if channels is None:
-        sys.exit(1)
-
-    matches = [c for c in channels if c.get("name", "").lower() == target]
-    if not matches:
-        # Suggest close matches (substring either direction) to help catch typos, since a bot
-        # can only see channels it's a member of (or all public ones, depending on scope).
-        suggestions = [c["name"] for c in channels if target in c.get("name", "").lower() or c.get("name", "").lower() in target]
-        log.error("No Slack channel named '%s' found (searched %d channel(s) visible to the bot).", name, len(channels))
-        if suggestions:
-            log.error("Did you mean: %s", ", ".join(sorted(suggestions)[:10]))
-        sys.exit(1)
-
-    channel = matches[0]
-    log.info("Resolved #%s -> %s", channel.get("name"), channel["id"])
-    print(channel["id"])
-    sys.exit(0)
-
-
-def cmd_slack_release(args):
+def cmd_teams_release(args):
     environments = os.getenv("ENVIRONMENTS")
     branch_or_tag = os.getenv("BRANCH_OR_TAG")
-    slack_bot_token = os.getenv("SLACK_BOT_TOKEN")
-    slack_channel = os.getenv("SLACK_CHANNEL")
+    teams_webhook_url = os.getenv("TEAMS_WEBHOOK_URL")
 
     missing = [n for n, v in [("ENVIRONMENTS", environments), ("BRANCH_OR_TAG", branch_or_tag)] if not v]
     if missing:
-        print_subcommand_usage("slack_release")
+        print_subcommand_usage("teams_release")
         for n in missing:
             log.error("Missing required environment variable: %s", n)
         sys.exit(1)
 
-    if bool(slack_bot_token) != bool(slack_channel):
-        print_subcommand_usage("slack_release")
-        log.error("SLACK_BOT_TOKEN and SLACK_CHANNEL must both be set to post to Slack")
-        sys.exit(1)
-
-    log.debug("ENVIRONMENTS:  %s", environments)
-    log.debug("BRANCH_OR_TAG: %s", branch_or_tag)
-    log.debug("SLACK_CHANNEL: %s", slack_channel)
+    log.debug("ENVIRONMENTS:      %s", environments)
+    log.debug("BRANCH_OR_TAG:     %s", branch_or_tag)
+    log.debug("TEAMS_WEBHOOK_URL: %s", "set" if teams_webhook_url else "not set")
 
     today = datetime.now(ZoneInfo("America/New_York")).strftime("%A, %B %-d, %Y - %H:%M %Z")
     is_tag = bool(SEMVER_RE.match(branch_or_tag))
@@ -2617,27 +2572,17 @@ def cmd_slack_release(args):
     )
 
     message = "\n".join([
-        "Truzo Release",
         f"- Date: {today}",
         f"- Branch or tag: {branch_or_tag}",
         f"- Release notes: {release_notes_url}",
         f"- Environments: {environments}",
     ])
-    print(message)
+    print("\n".join(["Truzo Release", message]))
 
-    if slack_bot_token and slack_channel:
-        resp = http_post(
-            "https://slack.com/api/chat.postMessage",
-            headers=make_slack_headers(slack_bot_token),
-            json={"channel": slack_channel, "text": message},
-        )
-        # Slack's Web API returns HTTP 200 even on failure -- the real success/failure signal is
-        # the "ok" field in the JSON body, not the status code.
-        body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-        if resp.status_code != 200 or not body.get("ok"):
-            log.error("Failed to post to Slack channel '%s': %s - %s", slack_channel, resp.status_code, body.get("error", resp.text))
+    if teams_webhook_url:
+        if not post_to_teams_webhook(teams_webhook_url, "Truzo Release", message):
             sys.exit(1)
-        log.info("Posted release notification to Slack channel '%s'", slack_channel)
+        log.info("Posted release notification to Teams")
 
     sys.exit(0)
 
@@ -2740,8 +2685,7 @@ def main():
     subparsers.add_parser("git_tickets", help="List Jira tickets (CES-*, T340B-*) from merge commits between FROM_TAG and TAG")
     subparsers.add_parser("apply_terraform", help="Trigger the terraform-apply-eastus workflow for a PR and one or more environments (PR, ENVIRONMENTS)")
     subparsers.add_parser("apply_flyway", help="Trigger the flywayMigration workflow for one or more environments (ENVIRONMENTS, optional BRANCH_OR_TAG)")
-    subparsers.add_parser("slack_find_channel", help="Resolve a Slack channel name to its ID (SLACK_BOT_TOKEN, NAME)")
-    subparsers.add_parser("slack_release", help="Prepare a release notification message, and post it to Slack if SLACK_BOT_TOKEN/SLACK_CHANNEL are set (ENVIRONMENTS, BRANCH_OR_TAG)")
+    subparsers.add_parser("teams_release", help="Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set (ENVIRONMENTS, BRANCH_OR_TAG)")
 
     args = parser.parse_args()
 
@@ -2764,8 +2708,7 @@ def main():
         "calc_pr":              cmd_calc_pr,
         "apply_terraform":      cmd_apply_terraform,
         "apply_flyway":         cmd_apply_flyway,
-        "slack_find_channel":  cmd_slack_find_channel,
-        "slack_release":        cmd_slack_release,
+        "teams_release":        cmd_teams_release,
     }
 
     if args.command in NO_AUTH_COMMANDS:

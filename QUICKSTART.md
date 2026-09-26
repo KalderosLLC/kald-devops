@@ -107,13 +107,13 @@ If it fails, the first release is still being built. Check back in a minute.
 pip install --upgrade --force-reinstall kald-devops
 ```
 
-### "Cannot find module requests/prettytable/slack_sdk"
+### "Cannot find module requests/prettytable"
 
 **Problem:** Dependencies not installed
 
 **Solution:**
 ```bash
-pip install requests prettytable slack-sdk
+pip install requests prettytable
 ```
 
 ### Reset pip configuration

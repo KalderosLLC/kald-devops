@@ -208,10 +208,10 @@ gh secret set AZURE_DEVOPS_EXT_PAT \
   --repo $REPO \
   --body "your-azure-devops-pat"
 
-# Add Slack webhook (optional)
-gh secret set SLACK_WEBHOOK \
+# Add Microsoft Teams webhook (optional)
+gh secret set TEAMS_WEBHOOK_URL \
   --repo $REPO \
-  --body "https://hooks.slack.com/services/..."
+  --body "https://your-tenant.webhook.office.com/webhookb2/..."
 
 # Add PostgreSQL credentials (optional)
 gh secret set POSTGRES_PROD_HOST \
