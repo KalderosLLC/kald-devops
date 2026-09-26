@@ -20,11 +20,14 @@ ${BLUE}OPTIONS:${NC}
   -d, --description TEXT      PR description (default: "My Description")
   -f, --file FILE             Read description from file
   --no-merge                  Create PR without auto-merging (review only)
-  --no-squash                 Merge without squashing (keep all commits)
+  --squash                    Squash-merge instead of a real merge commit (NOT recommended --
+                               squash rewrites history, which breaks the ancestor relationship
+                               between this branch and the base branch and causes spurious merge
+                               conflicts on future PRs; see git history around 2026-09-26)
   -h, --help                  Show this help message
 
 ${BLUE}EXAMPLES:${NC}
-  # Create PR from current branch to main (auto-merge with squash)
+  # Create PR from current branch to main (auto-merge with a real merge commit)
   $(basename "$0")
 
   # Create PR to develop-dlindsay
@@ -45,7 +48,7 @@ PR_TITLE="My work"
 DESCRIPTION="My Description"
 BASE_BRANCH="main"
 AUTO_MERGE=true
-SQUASH=true
+SQUASH=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -76,7 +79,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --no-squash)
+      # Kept for backwards compatibility -- this is now the default behavior.
       SQUASH=false
+      shift
+      ;;
+    --squash)
+      SQUASH=true
       shift
       ;;
     -h|--help)
@@ -134,11 +142,36 @@ if [[ "$AUTO_MERGE" == true ]]; then
   if [[ "$SQUASH" == true ]]; then
     gh pr merge "$PR_URL" --admin --squash
   else
-    gh pr merge "$PR_URL" --admin
+    gh pr merge "$PR_URL" --admin --merge
   fi
 
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
   echo "✓ Changes merged to $BASE_BRANCH"
+
+  # Sync $CURRENT_BRANCH forward from $BASE_BRANCH so it never lags behind what it just fed
+  # into. With a real (non-squash) merge, $BASE_BRANCH's new tip has $CURRENT_BRANCH's own
+  # commits as an ancestor, so this is always a clean fast-forward -- it's what keeps the two
+  # branches from diverging cycle over cycle. If --squash was used instead, this fast-forward
+  # is expected to fail, since squashing creates a new commit with no shared history; that's
+  # exactly the divergence squashing causes, not a bug in this sync step.
+  if [[ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]]; then
+    echo -e "\n${BLUE}Syncing $CURRENT_BRANCH from $BASE_BRANCH...${NC}"
+    git fetch origin "$BASE_BRANCH"
+    if git merge --ff-only "origin/$BASE_BRANCH"; then
+      git push origin "$CURRENT_BRANCH"
+      echo -e "${GREEN}✅ $CURRENT_BRANCH is now in sync with $BASE_BRANCH${NC}"
+    else
+      echo -e "${RED}⚠ Could not fast-forward $CURRENT_BRANCH from $BASE_BRANCH.${NC}"
+      if [[ "$SQUASH" == true ]]; then
+        echo "  This is expected with --squash: it rewrites history, so $CURRENT_BRANCH can't"
+        echo "  fast-forward from it. Consider dropping --squash to avoid this permanently."
+      else
+        echo "  $BASE_BRANCH may have moved (e.g. another PR merged) since this PR was created."
+        echo "  Sync manually: git fetch origin $BASE_BRANCH && git merge origin/$BASE_BRANCH"
+      fi
+    fi
+  fi
+
   echo "✓ You're still on: $CURRENT_BRANCH"
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
