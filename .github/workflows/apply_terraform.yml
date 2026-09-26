@@ -15,9 +15,12 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
-    container: ghcr.io/kalderosllc/kald-devops/devops-tools:latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Install kald-devops
         run: pip install -e .
