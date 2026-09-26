@@ -7,6 +7,15 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# `gh` itself can emit UTF-8 output (e.g. a checkmark icon in its own success/error
+# messages). UTF-8 is not acceptable in this script's output; ISO-8859-1 is fine.
+# Anything from `gh` that does get displayed is piped through this first, which
+# transliterates what it can (accented Latin letters survive as single ISO-8859-1
+# bytes) and replaces anything else with '?' rather than emitting raw UTF-8 bytes.
+sanitize_gh_output() {
+  iconv -f UTF-8 -t ISO-8859-1//TRANSLIT//IGNORE
+}
+
 # Function to display usage
 usage() {
   cat << USAGE
@@ -145,10 +154,19 @@ echo -e "${GREEN}PR created: $PR_URL${NC}\n"
 if [[ "$AUTO_MERGE" == true ]]; then
   echo -e "${BLUE}Merging PR...${NC}"
 
+  # gh pr merge prints its own "Merged pull request ..." confirmation on success (with a
+  # checkmark icon), which this script doesn't need since it prints its own confirmation
+  # right below. Output is captured rather than shown directly, and is only displayed --
+  # through sanitize_gh_output -- if the merge actually failed, so real error detail from
+  # gh is never lost, and gh's own exit status (not a pipeline's) is what `set -e` sees.
   if [[ "$SQUASH" == true ]]; then
-    gh pr merge "$PR_URL" --admin --squash
+    merge_output=$(gh pr merge "$PR_URL" --admin --squash 2>&1) && merge_status=0 || merge_status=$?
   else
-    gh pr merge "$PR_URL" --admin --merge
+    merge_output=$(gh pr merge "$PR_URL" --admin --merge 2>&1) && merge_status=0 || merge_status=$?
+  fi
+  if [[ $merge_status -ne 0 ]]; then
+    echo "$merge_output" | sanitize_gh_output >&2
+    exit $merge_status
   fi
 
   echo -e "\n${GREEN}PR merged successfully!${NC}"

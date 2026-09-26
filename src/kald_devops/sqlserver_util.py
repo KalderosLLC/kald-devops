@@ -7,7 +7,7 @@ import os
 import sys
 
 # ---------------------------------------------------------------------------
-# Logging – single root logger; all output goes to stdout via StreamHandler
+# Logging - single root logger; all output goes to stdout via StreamHandler
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.DEBUG,
@@ -76,7 +76,7 @@ class Application:
         driver   = self._optional_env(self.ENV_DB_DRIVER, self.DEFAULT_DRIVER)
 
         self.log.info(
-            "Connection target  →  server=%s  port=%s  database=%s  user=%s  driver=%s",
+            "Connection target  ->  server=%s  port=%s  database=%s  user=%s  driver=%s",
             server, port, database, user, driver,
         )
 
@@ -95,7 +95,7 @@ class Application:
         return conn_str
 
     # ------------------------------------------------------------------
-    # Helpers – output
+    # Helpers - output
     # ------------------------------------------------------------------
     def _make_table(self, field_names: list[str]):
         """Return a PrettyTable configured to never wrap cell content."""
@@ -136,7 +136,7 @@ class Application:
 
         conn_str = self._build_connection_string()
 
-        self.log.info("Attempting to open connection to SQL Server …")
+        self.log.info("Attempting to open connection to SQL Server ...")
         try:
             conn = pyodbc.connect(conn_str, autocommit=False)
             self.log.info("Connection established successfully.")
@@ -193,7 +193,7 @@ class Application:
 
         conn_str = self._build_connection_string()
 
-        self.log.info("Attempting to open connection to SQL Server …")
+        self.log.info("Attempting to open connection to SQL Server ...")
         try:
             conn = pyodbc.connect(conn_str, autocommit=False)
             self.log.info("Connection established successfully.")
@@ -289,9 +289,9 @@ class Application:
             return 0
 
         # ------------------------------------------------------------------
-        # Table 1 – Member → Roles
+        # Table 1 - Member -> Roles
         # ------------------------------------------------------------------
-        self.log.debug("Building Table 1: member → roles.")
+        self.log.debug("Building Table 1: member -> roles.")
         t1 = self._make_table(["Member", "Member Type", "Roles"])
 
         for (member_name, member_type), role_list in sorted(member_to_roles.items()):
@@ -301,9 +301,9 @@ class Application:
         print(t1)
 
         # ------------------------------------------------------------------
-        # Table 2 – Role → Members
+        # Table 2 - Role -> Members
         # ------------------------------------------------------------------
-        self.log.debug("Building Table 2: role → members.")
+        self.log.debug("Building Table 2: role -> members.")
         t2 = self._make_table(["Role", "Members"])
 
         for role_name, member_list in sorted(role_to_members.items()):
@@ -343,7 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="app",
-        description="SQL Server utility – standard subparser implementation.",
+        description="SQL Server utility - standard subparser implementation.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -382,7 +382,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    # connect has no extra CLI flags – all config comes from the environment.
+    # connect has no extra CLI flags - all config comes from the environment.
     connect_parser.set_defaults(command="connect")
 
     # -- auth --------------------------------------------------------------

@@ -182,10 +182,10 @@ def cmd_build(args, headers):
 
     if SEMVER_RE.match(branch_or_tag):
         source_branch = f"refs/tags/{branch_or_tag}"
-        log.debug("BRANCH_OR_TAG='%s' matches semver — treating as a tag", branch_or_tag)
+        log.debug("BRANCH_OR_TAG='%s' matches semver - treating as a tag", branch_or_tag)
     else:
         source_branch = f"refs/heads/{branch_or_tag}"
-        log.debug("BRANCH_OR_TAG='%s' does not match semver — treating as a branch", branch_or_tag)
+        log.debug("BRANCH_OR_TAG='%s' does not match semver - treating as a branch", branch_or_tag)
     log.debug("Building from: %s", source_branch)
 
     all_defs = fetch_build_pipelines(headers)
@@ -306,7 +306,7 @@ def cmd_build(args, headers):
             log.info("%s: %s", pname, status)
         else:
             any_unsuccessful = True
-            log.error("%s: %s — %s", pname, status, reason)
+            log.error("%s: %s - %s", pname, status, reason)
         table.add_row([pid, trunc(pname, name_w), bot, duration, status, reason])
     print_table(table, args)
 
@@ -943,10 +943,10 @@ def cmd_deploy(args, headers):
 
     if SEMVER_RE.match(branch_or_tag):
         source_ref = f"refs/tags/{branch_or_tag}"
-        log.debug("BRANCH_OR_TAG='%s' matches semver — treating as a tag", branch_or_tag)
+        log.debug("BRANCH_OR_TAG='%s' matches semver - treating as a tag", branch_or_tag)
     else:
         source_ref = f"refs/heads/{branch_or_tag}"
-        log.debug("BRANCH_OR_TAG='%s' does not match semver — treating as a branch", branch_or_tag)
+        log.debug("BRANCH_OR_TAG='%s' does not match semver - treating as a branch", branch_or_tag)
 
     # Parse and deduplicate requested environments (preserve order, case-insensitive dedup)
     seen_env = set()
@@ -1027,7 +1027,7 @@ def cmd_deploy(args, headers):
 
     log.debug("Deploying %d pipeline(s) from '%s' (%s) to: %s", len(folder_defs), branch_or_tag, source_ref, environments_list)
 
-    # Phase 1 — pre-flight only: resolve the release for every pipeline and check which of the
+    # Phase 1 - pre-flight only: resolve the release for every pipeline and check which of the
     # requested environments/stages actually exist in it. Purely read-only (no PATCH calls yet),
     # so nothing is triggered until every pipeline in the batch has been verified. A pipeline
     # missing an environment/stage only logs a warning and is skipped for that environment (see
@@ -1044,11 +1044,11 @@ def cmd_deploy(args, headers):
     preflight_errors = [(did, dname, msg) for did, dname, msg, _ in preflight_results if msg is not None]
 
     if preflight_errors:
-        log.error("Aborting: %d pipeline(s) failed pre-flight checks — no deployments were triggered for any pipeline.",
+        log.error("Aborting: %d pipeline(s) failed pre-flight checks - no deployments were triggered for any pipeline.",
                    len(preflight_errors))
         sys.exit(1)
 
-    # Phase 2 — every pipeline passed pre-flight, so it's now safe to actually trigger deployments.
+    # Phase 2 - every pipeline passed pre-flight, so it's now safe to actually trigger deployments.
     triggered = []
     errors = []
 
@@ -1063,7 +1063,7 @@ def cmd_deploy(args, headers):
             errors.extend(e)
 
     if errors:
-        log.warning("%d deployment(s) failed to queue after pre-flight passed — see errors above.", len(errors))
+        log.warning("%d deployment(s) failed to queue after pre-flight passed - see errors above.", len(errors))
 
     if not triggered:
         log.warning("No deployments were queued.")
@@ -1115,7 +1115,7 @@ def cmd_deploy(args, headers):
             log.info("%s / %s: %s", pname, environment, status)
         else:
             any_unsuccessful = True
-            log.error("%s / %s: %s — %s", pname, environment, status, reason)
+            log.error("%s / %s: %s - %s", pname, environment, status, reason)
         table.add_row([pid, environment, trunc(pname, name_w), active_version, rname, status, reason])
     print_table(table, args)
 
@@ -1342,7 +1342,7 @@ def cmd_create_releases_from_artifact(args, headers):
         log.error("%s: %s", pipeline_name, msg)
 
     if preflight_errors:
-        log.error("Aborting: %d of %d pipeline(s) failed pre-flight checks — no releases were created for any pipeline.",
+        log.error("Aborting: %d of %d pipeline(s) failed pre-flight checks - no releases were created for any pipeline.",
                    len(preflight_errors), len(pipelines))
         sys.exit(1)
 
@@ -1520,11 +1520,11 @@ def _gh_create_tag(gh_headers, repo, tag, sha):
         if resp2.status_code == 200:
             existing_sha = resp2.json()["object"]["sha"]
             if existing_sha == sha:
-                log.info("Tag '%s' already exists in %s at %s — reusing", tag, repo, existing_sha)
+                log.info("Tag '%s' already exists in %s at %s - reusing", tag, repo, existing_sha)
                 return existing_sha
             log.error(
                 "Tag '%s' already exists in %s at %s, but this run resolved a different "
-                "commit (%s) — refusing to silently reuse a mismatched tag.",
+                "commit (%s) - refusing to silently reuse a mismatched tag.",
                 tag, repo, existing_sha, sha,
             )
             return None
@@ -1626,7 +1626,7 @@ def cmd_tag(args):
 
     tag_phoenix = PHOENIX in repositories
 
-    # If phoenix is being tagged, phoenix-data-gateway is handled implicitly —
+    # If phoenix is being tagged, phoenix-data-gateway is handled implicitly -
     # remove it from the list so it is not tagged a second time independently.
     remaining = [r for r in repositories if r != PHOENIX and not (r == PHOENIX_PDG and tag_phoenix)]
 
@@ -2283,7 +2283,7 @@ def cmd_apply_terraform(args):
             log.info("terraform / %s: %s", env, status)
         else:
             any_unsuccessful = True
-            log.error("terraform / %s: %s — %s", env, status, reason)
+            log.error("terraform / %s: %s - %s", env, status, reason)
         table.add_row([env, pr, url, status, reason])
     print_table(table, args)
     sys.exit(1 if any_unsuccessful else 0)
@@ -2389,7 +2389,7 @@ def cmd_apply_flyway(args):
             log.info("flyway / %s: %s", env, status)
         else:
             any_unsuccessful = True
-            log.error("flyway / %s: %s — %s", env, status, reason)
+            log.error("flyway / %s: %s - %s", env, status, reason)
         table.add_row([env, branch_or_tag, url, status, reason])
     print_table(table, args)
     sys.exit(1 if any_unsuccessful else 0)
@@ -2402,7 +2402,7 @@ SUBCOMMAND_ENV_VARS = [
     ("list_repositories",     "GITHUB_TOKEN",          "required", "GitHub personal access token with read:org and repo scopes"),
     ("tag_repository",        "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
     ("tag_repository",        "TAG",                   "required", "Git tag name to create (e.g. v1.21.0-rc)"),
-    ("tag_repository",        "REPOSITORIES",          "required", "Comma-separated list of full GitHub repository paths to tag (e.g. KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway); when KalderosLLC/phoenix is included, phoenix-data-gateway is tagged implicitly and the submodule pointer is updated before tagging phoenix — do not also list phoenix-data-gateway separately"),
+    ("tag_repository",        "REPOSITORIES",          "required", "Comma-separated list of full GitHub repository paths to tag (e.g. KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway); when KalderosLLC/phoenix is included, phoenix-data-gateway is tagged implicitly and the submodule pointer is updated before tagging phoenix - do not also list phoenix-data-gateway separately"),
     ("tag_repository",        "BRANCH",                "optional", "Source branch to tag (default: main, e.g. hotfix/v1.19.0); applies to all repositories"),
     ("tag_repository",        "PDG_TAG_OR_BRANCH",     "optional", "Tag or branch to pin phoenix-data-gateway to when KalderosLLC/phoenix is tagged implicitly (default: BRANCH); checked as an existing tag first, then as a branch, and errors out if neither exists in phoenix-data-gateway"),
     ("create_release_notes",  "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
