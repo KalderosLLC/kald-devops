@@ -26,14 +26,20 @@ ${BLUE}OPTIONS:${NC}
                                conflicts on future PRs; see git history around 2026-09-26)
   -h, --help                  Show this help message
 
+After a successful merge, the current branch is retired and a fresh branch named
+feature-<epoch-millis> is cut from the just-updated base branch, pushed, and checked
+out -- so you always start the next round of work from a base branch that's actually
+current, instead of a long-lived branch that can silently drift out of sync with it.
+
 ${BLUE}EXAMPLES:${NC}
-  # Create PR from current branch to main (auto-merge with a real merge commit)
+  # Create PR from current branch to main (auto-merge with a real merge commit),
+  # then rotate onto a new feature-<epoch-millis> branch
   $(basename "$0")
 
-  # Create PR to develop-dlindsay
-  $(basename "$0") -B develop-dlindsay
+  # Create PR to a different base branch
+  $(basename "$0") -B release-1.0
 
-  # Create PR for review only (don't auto-merge)
+  # Create PR for review only (don't auto-merge, don't rotate branches)
   $(basename "$0") --no-merge
 
   # Custom title and description
@@ -105,7 +111,7 @@ if [[ "$CURRENT_BRANCH" == "main" ]] && [[ "$BASE_BRANCH" == "main" ]]; then
   echo -e "${RED}Error: Cannot create PR from main to main${NC}"
   echo ""
   echo -e "${BLUE}To work on changes:${NC}"
-  echo "  git checkout -b develop-dlindsay"
+  echo "  git checkout -b feature-\$(date +%s%3N)"
   echo "  # Make your changes..."
   echo "  $(basename "$0")"
   echo ""
@@ -148,31 +154,21 @@ if [[ "$AUTO_MERGE" == true ]]; then
   echo -e "\n${GREEN}✅ PR merged successfully!${NC}"
   echo "✓ Changes merged to $BASE_BRANCH"
 
-  # Sync $CURRENT_BRANCH forward from $BASE_BRANCH so it never lags behind what it just fed
-  # into. With a real (non-squash) merge, $BASE_BRANCH's new tip has $CURRENT_BRANCH's own
-  # commits as an ancestor, so this is always a clean fast-forward -- it's what keeps the two
-  # branches from diverging cycle over cycle. If --squash was used instead, this fast-forward
-  # is expected to fail, since squashing creates a new commit with no shared history; that's
-  # exactly the divergence squashing causes, not a bug in this sync step.
+  # Retire $CURRENT_BRANCH and rotate onto a fresh feature-<epoch-millis> branch cut from a
+  # freshly-fetched $BASE_BRANCH. This is what actually prevents this branch from ever
+  # drifting out of sync with $BASE_BRANCH again -- there's no long-lived branch left to
+  # drift; every round of work starts from wherever $BASE_BRANCH actually is right now.
+  # $CURRENT_BRANCH's remote ref is expected to be deleted automatically by GitHub on merge
+  # (repo setting); the local branch is deleted here since it's now fully merged.
   if [[ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]]; then
-    echo -e "\n${BLUE}Syncing $CURRENT_BRANCH from $BASE_BRANCH...${NC}"
+    NEW_BRANCH="feature-$(date +%s%3N)"
+    echo -e "\n${BLUE}Rotating onto $NEW_BRANCH (from $BASE_BRANCH)...${NC}"
     git fetch origin "$BASE_BRANCH"
-    if git merge --ff-only "origin/$BASE_BRANCH"; then
-      git push origin "$CURRENT_BRANCH"
-      echo -e "${GREEN}✅ $CURRENT_BRANCH is now in sync with $BASE_BRANCH${NC}"
-    else
-      echo -e "${RED}⚠ Could not fast-forward $CURRENT_BRANCH from $BASE_BRANCH.${NC}"
-      if [[ "$SQUASH" == true ]]; then
-        echo "  This is expected with --squash: it rewrites history, so $CURRENT_BRANCH can't"
-        echo "  fast-forward from it. Consider dropping --squash to avoid this permanently."
-      else
-        echo "  $BASE_BRANCH may have moved (e.g. another PR merged) since this PR was created."
-        echo "  Sync manually: git fetch origin $BASE_BRANCH && git merge origin/$BASE_BRANCH"
-      fi
-    fi
+    git checkout -b "$NEW_BRANCH" "origin/$BASE_BRANCH"
+    git push -u origin "$NEW_BRANCH"
+    git branch -d "$CURRENT_BRANCH" 2>/dev/null || true
+    echo -e "${GREEN}✅ Now on $NEW_BRANCH, tracking origin/$NEW_BRANCH${NC}"
   fi
-
-  echo "✓ You're still on: $CURRENT_BRANCH"
 else
   echo -e "${GREEN}✅ PR ready for review${NC}"
   echo "Review at: $PR_URL"
