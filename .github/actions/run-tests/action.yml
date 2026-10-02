@@ -1,0 +1,51 @@
+name: Run tests
+description: >
+  Install tox, run the unit test suite with coverage, write a job summary,
+  and archive the JUnit + coverage reports as artifacts. Single source of
+  truth for the test step shared by ci.yml and publish-image.yml -- previously
+  this ~36-line block was copy-pasted verbatim into both workflow files.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Install tox
+      shell: bash
+      run: pip install tox
+
+    - name: Run tests
+      shell: bash
+      run: tox -e test -- -v
+
+    - name: Write job summary
+      if: always()
+      shell: bash
+      run: |
+        echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        python scripts/summarize_tests.py test-results/junit.xml >> "$GITHUB_STEP_SUMMARY" || true
+        echo '```' >> "$GITHUB_STEP_SUMMARY"
+        echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+        tox exec -qq -e test -- coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+    - name: Archive test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pytest-results
+        path: test-results/junit.xml
+        if-no-files-found: warn
+
+    - name: Archive coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: |
+          test-results/coverage.xml
+          test-results/htmlcov
+        if-no-files-found: warn

@@ -1,5 +1,18 @@
 #!/bin/bash
+#
+# Fetch the log for a GitHub Actions run and save it to <run-id>.log.
+#
+# Usage:
+#   gh_view <run-id>
+
+set -e
+
+if [[ -z "$1" ]]; then
+  echo "Usage: $(basename "$0") <run-id>" >&2
+  exit 1
+fi
 
 ID="$1"
+REPO="${REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 
-gh run view "$ID" --repo KalderosLLC/kald-devops --log > "$ID.log"
+gh run view "$ID" --repo "$REPO" --log > "$ID.log"
