@@ -66,7 +66,7 @@ git push
 Run the setup script:
 
 ```bash
-./configure_local_pip.sh
+configure_local_pip.sh
 ```
 
 This creates `~/.config/pip/pip.conf` automatically.
@@ -330,7 +330,7 @@ This installs the package in editable mode, so changes to the source code are im
 | **Release Location** | GitHub Releases |
 | **PyPI Index** | GitHub Pages: `https://KalderosLLC.github.io/kald-devops/simple/` |
 | **Authentication** | None (public index) |
-| **Setup Script** | Run `./configure_local_pip.sh` |
+| **Setup Script** | Run `configure_local_pip.sh` |
 | **Installation** | `pip install kald-devops` |
 | **Upgrade** | `pip install --upgrade kald-devops` |
 | **Trigger** | Tag creation (e.g., `git tag v0.2.0`) |

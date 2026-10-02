@@ -3,7 +3,7 @@
 # Setup script to configure local pip installation from GitHub Packages
 #
 # Usage:
-#   ./setup_local_install.sh
+#   setup_local_install.sh
 #
 # This script will:
 # 1. Prompt for your GitHub Personal Access Token

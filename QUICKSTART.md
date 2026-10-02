@@ -7,7 +7,7 @@ Get `kald-devops` installed and running in minutes.
 Run the setup script:
 
 ```bash
-./configure_local_pip.sh
+configure_local_pip.sh
 ```
 
 This script:

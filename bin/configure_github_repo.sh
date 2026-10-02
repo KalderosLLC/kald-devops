@@ -8,7 +8,7 @@
 #   - Repository already created and pushed
 #
 # Usage:
-#   ./configure_github_repo.sh
+#   configure_github_repo.sh
 #
 
 set -e

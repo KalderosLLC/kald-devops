@@ -1,5 +1,8 @@
 # kald-devops
 
+[![Test](https://github.com/KalderosLLC/kald-devops/actions/workflows/test.yml/badge.svg)](https://github.com/KalderosLLC/kald-devops/actions/workflows/test.yml)
+[![Publish](https://github.com/KalderosLLC/kald-devops/actions/workflows/publish.yml/badge.svg)](https://github.com/KalderosLLC/kald-devops/actions/workflows/publish.yml)
+
 Kalderos DevOps utilities for managing Phoenix pipelines, GitHub workflows, and database utilities.
 
 ## Installation
@@ -81,12 +84,31 @@ This package is structured as follows:
 
 The repository includes GitHub Actions workflows for each major operation:
 
+- `.github/workflows/test.yml` - Run the unit test suite + coverage on every pull request and push to `main`
+- `.github/workflows/publish.yml` - Run tests, then build and publish the package to GitHub Packages
 - `.github/workflows/build_pipelines.yml` - Trigger Azure DevOps builds
 - `.github/workflows/deploy_pipelines.yml` - Trigger Azure DevOps deployments
 - `.github/workflows/apply_terraform.yml` - Apply Terraform configurations
 - `.github/workflows/apply_flyway.yml` - Apply Flyway migrations
 - `.github/workflows/postgres_apply_pr.yml` - Apply PostgreSQL migrations
-- `.github/workflows/publish.yml` - Publish package to GitHub Packages
+
+`test.yml` and `publish.yml` are thin triggers around plain CLI commands (see
+[Testing](#testing) below) -- neither one contains any test or build logic of
+its own, so the same checks run identically on a laptop, in these GitHub
+Actions workflows, or under any other CI provider.
+
+### Branch Protection
+
+`setup_branch_protection.sh` configures `main` to require the `test`
+status check (from `.github/workflows/test.yml`) to pass, and the branch to
+be up to date with `main`, before a pull request can be merged -- in addition
+to requiring 1 approving review and blocking force pushes/deletions. Someone
+with admin access to the repository runs it once:
+
+```bash
+setup_branch_protection.sh            # apply
+setup_branch_protection.sh --remove   # remove
+```
 
 ## Requirements
 
@@ -131,15 +153,52 @@ kald-postgres-util --help
 kald-sqlserver-util --help
 ```
 
-### Running Tests
+### Testing
+
+Tests are run with [pytest](https://docs.pytest.org/) and standardized via
+[tox](https://tox.wiki/) so the exact same command runs locally and in CI,
+regardless of CI provider:
 
 ```bash
-python -m pytest tests/
+pip install tox
+tox -e test          # or just: tox
+```
+
+This installs the package with its `test` extra, runs the full suite with
+coverage, and writes:
+
+- `test-results/junit.xml` - machine-readable JUnit XML test report
+- `test-results/coverage.xml` - Cobertura-format coverage report
+- `test-results/htmlcov/index.html` - browsable HTML coverage report
+
+Extra arguments after `--` are passed straight to pytest, e.g. to run a single file verbosely:
+
+```bash
+tox -e test -- -v tests/test_devops.py
+```
+
+`.github/workflows/test.yml` runs on every pull request and push to `main`;
+it calls `tox -e test` and then archives `test-results/` (JUnit + coverage)
+as a downloadable artifact on the run, and writes a human-readable summary
+(pass/fail counts + per-file coverage table) directly to the run's Summary
+page using `scripts/summarize_tests.py` and `coverage report --format=markdown`.
+
+Without tox, the equivalent is:
+
+```bash
+pip install -e ".[test]"
+pytest
 ```
 
 ### Building a Local Wheel
 
-Build a wheel matching what gets published:
+Build a wheel matching what gets published, via the standard PEP 517 `python -m build` entry point:
+
+```bash
+tox -e build
+```
+
+or, without tox:
 
 ```bash
 pip install build
