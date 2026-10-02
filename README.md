@@ -1,7 +1,6 @@
 # kald-devops
 
-[![Test](https://github.com/KalderosLLC/kald-devops/actions/workflows/test.yml/badge.svg)](https://github.com/KalderosLLC/kald-devops/actions/workflows/test.yml)
-[![Publish](https://github.com/KalderosLLC/kald-devops/actions/workflows/publish.yml/badge.svg)](https://github.com/KalderosLLC/kald-devops/actions/workflows/publish.yml)
+[![CI](https://github.com/KalderosLLC/kald-devops/actions/workflows/ci.yml/badge.svg)](https://github.com/KalderosLLC/kald-devops/actions/workflows/ci.yml)
 
 Kalderos DevOps utilities for managing Phoenix pipelines, GitHub workflows, and database utilities.
 
@@ -84,26 +83,27 @@ This package is structured as follows:
 
 The repository includes GitHub Actions workflows for each major operation:
 
-- `.github/workflows/test.yml` - Run the unit test suite + coverage on every pull request and push to `main`
-- `.github/workflows/publish.yml` - Run tests, then build and publish the package to GitHub Packages
+- `.github/workflows/ci.yml` - `test` -> `build` -> `release` pipeline. `test` and `build` run on every pull request and every push to `main`; `release` additionally requires a `v*` tag push, and creates the GitHub Release, PyPI index, and GitHub Pages deploy
 - `.github/workflows/build_pipelines.yml` - Trigger Azure DevOps builds
 - `.github/workflows/deploy_pipelines.yml` - Trigger Azure DevOps deployments
 - `.github/workflows/apply_terraform.yml` - Apply Terraform configurations
 - `.github/workflows/apply_flyway.yml` - Apply Flyway migrations
 - `.github/workflows/postgres_apply_pr.yml` - Apply PostgreSQL migrations
 
-`test.yml` and `publish.yml` are thin triggers around plain CLI commands (see
-[Testing](#testing) below) -- neither one contains any test or build logic of
-its own, so the same checks run identically on a laptop, in these GitHub
-Actions workflows, or under any other CI provider.
+`ci.yml` is a thin trigger around plain CLI commands (see [Testing](#testing)
+below) -- it contains no test or build logic of its own (each job just runs
+`tox -e test` or `python -m build`), so the same checks run identically on a
+laptop, in this GitHub Actions workflow, or under any other CI provider. A
+pull request shows all three jobs in one run, with `release` visibly skipped
+unless the push is a tag.
 
 ### Branch Protection
 
 `setup_branch_protection.sh` configures `main` to require the `test`
-status check (from `.github/workflows/test.yml`) to pass, and the branch to
-be up to date with `main`, before a pull request can be merged -- in addition
-to requiring 1 approving review and blocking force pushes/deletions. Someone
-with admin access to the repository runs it once:
+status check (the first job of `.github/workflows/ci.yml`) to pass, and the
+branch to be up to date with `main`, before a pull request can be merged --
+in addition to requiring 1 approving review and blocking force
+pushes/deletions. Someone with admin access to the repository runs it once:
 
 ```bash
 setup_branch_protection.sh            # apply
@@ -177,11 +177,12 @@ Extra arguments after `--` are passed straight to pytest, e.g. to run a single f
 tox -e test -- -v tests/test_devops.py
 ```
 
-`.github/workflows/test.yml` runs on every pull request and push to `main`;
-it calls `tox -e test` and then archives `test-results/` (JUnit + coverage)
-as a downloadable artifact on the run, and writes a human-readable summary
-(pass/fail counts + per-file coverage table) directly to the run's Summary
-page using `scripts/summarize_tests.py` and `coverage report --format=markdown`.
+The `test` job of `.github/workflows/ci.yml` runs this on every pull request
+and push to `main`; it calls `tox -e test` and then archives `test-results/`
+(JUnit + coverage) as a downloadable artifact on the run, and writes a
+human-readable summary (pass/fail counts + per-file coverage table) directly
+to the run's Summary page using `scripts/summarize_tests.py` and
+`coverage report --format=markdown`.
 
 Without tox, the equivalent is:
 
