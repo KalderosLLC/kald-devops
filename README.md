@@ -75,7 +75,15 @@ kald-sqlserver-util [--log-level {DEBUG|INFO|WARNING|ERROR|CRITICAL}] [--json] <
 This package is structured as follows:
 
 - `src/kald_devops/` - Main package directory
-  - `devops.py` - Phoenix pipeline and GitHub workflow management
+  - `devops.py` - CLI entry point: argument parsing and dispatch only (`HANDLERS` + `main()`)
+  - `common.py` - Shared infrastructure for `devops.py` and `commands/*`: HTTP wrappers with
+    retry, table formatting, header builders, the pipeline-token resolver, and the declarative
+    `SUBCOMMAND_SPECS` metadata used to render `--help`/usage text
+  - `github_actions.py` - GitHub Actions run-dispatch/poll helpers shared by `commands/terraform.py`
+    and `commands/flyway.py`
+  - `commands/` - One module per subcommand domain (`build`, `release`, `tag`, `repositories`,
+    `git_tickets`, `release_notes`, `terraform`, `flyway`, `teams`) -- this is where the actual
+    `cmd_*` logic lives
   - `postgres_util.py` - PostgreSQL utilities
   - `sqlserver_util.py` - SQL Server utilities
 
@@ -134,7 +142,10 @@ This installs the package in "editable" mode, so changes to source code are imme
 ### Develop & Test Locally
 
 Edit source files in `src/kald_devops/`:
-- `devops.py` - Main devops CLI
+- `devops.py` - CLI entry point (argument parsing and dispatch only)
+- `common.py` - Shared infrastructure (HTTP, formatting, subcommand metadata)
+- `github_actions.py` - Shared GitHub Actions run-dispatch/poll helpers
+- `commands/` - The actual `cmd_*` implementation, one module per domain
 - `postgres_util.py` - PostgreSQL utilities
 - `sqlserver_util.py` - SQL Server utilities
 - `__init__.py` - Package metadata and version

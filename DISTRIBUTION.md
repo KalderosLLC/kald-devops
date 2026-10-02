@@ -218,7 +218,10 @@ The installed package includes:
 ```
 kald_devops/
 ├── __init__.py           # Version and metadata
-├── devops.py             # Phoenix pipeline management CLI
+├── devops.py             # Phoenix pipeline CLI entry point (argument parsing and dispatch)
+├── common.py             # Shared HTTP/formatting infrastructure and subcommand metadata
+├── github_actions.py     # Shared GitHub Actions run-dispatch/poll helpers
+├── commands/             # cmd_* implementations, one module per domain
 ├── postgres_util.py      # PostgreSQL utilities CLI
 ├── sqlserver_util.py     # SQL Server utilities CLI
 └── py.typed              # PEP 561 type hints marker

@@ -7,7 +7,7 @@
 
 set -e
 
-REPO="KalderosLLC/kald-devops"
+REPO="${REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 BRANCH="main"
 REMOVE=false
 

@@ -49,7 +49,7 @@ kald-postgres-util = "kald_devops.postgres_util:main"
 kald-sqlserver-util = "kald_devops.sqlserver_util:main"
 
 [tool.setuptools]
-packages = ["kald_devops"]
+packages = ["kald_devops", "kald_devops.commands"]
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]

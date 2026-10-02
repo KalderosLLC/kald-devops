@@ -13,7 +13,7 @@
 
 set -e
 
-REPO="KalderosLLC/kald-devops"
+REPO="${REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 
 echo "Configuring GitHub repository: $REPO"
 echo ""
@@ -45,7 +45,7 @@ echo ""
 echo "Step 1: Update repository metadata"
 gh repo edit "$REPO" \
   --description "Kalderos DevOps utilities for managing Phoenix pipelines and database utilities" \
-  --homepage "https://github.com/KalderosLLC/kald-devops" \
+  --homepage "https://github.com/$REPO" \
   --add-topic "devops" \
   --add-topic "pipeline" \
   --add-topic "azure" \
