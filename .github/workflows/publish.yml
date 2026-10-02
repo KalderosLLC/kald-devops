@@ -62,7 +62,7 @@ jobs:
         run: python -m build --wheel
 
       - name: Create GitHub Release with wheel
-        if: startsWith(github.ref, 'refs/tags/')
+        if: success() && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
           files: dist/*
@@ -71,7 +71,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate PyPI Simple Index
-        if: startsWith(github.ref, 'refs/tags/')
+        if: success() && startsWith(github.ref, 'refs/tags/')
         run: |
           mkdir -p docs/simple/kald-devops
           VERSION=${GITHUB_REF#refs/tags/}
@@ -99,7 +99,7 @@ jobs:
           EOF
 
       - name: Deploy PyPI Index to GitHub Pages
-        if: startsWith(github.ref, 'refs/tags/')
+        if: success() && startsWith(github.ref, 'refs/tags/')
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

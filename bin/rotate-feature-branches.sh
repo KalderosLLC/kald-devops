@@ -63,8 +63,8 @@ USAGE
 }
 
 # Default values
-PR_TITLE="My work"
-DESCRIPTION="My Description"
+PR_TITLE="Rotate Feature Branch"
+DESCRIPTION="The developer executed bin/rotate-feature-branches.sh"
 BASE_BRANCH="main"
 AUTO_MERGE=true
 SQUASH=false
