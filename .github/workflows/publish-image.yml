@@ -22,6 +22,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install tox
+        run: pip install tox
+
+      - name: Run tests
+        run: tox -e test -- -v
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## Test Results" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python scripts/summarize_tests.py test-results/junit.xml >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          tox exec -qq -e test -- coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: test-results/junit.xml
+          if-no-files-found: warn
+
+      - name: Archive coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            test-results/coverage.xml
+            test-results/htmlcov
+          if-no-files-found: warn
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
