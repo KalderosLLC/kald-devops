@@ -28,6 +28,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 
+[project.optional-dependencies]
+test = [
+    "pytest>=7.4",
+    # postgres_util.py imports psycopg2 unconditionally at module level, but it
+    # isn't declared in [project.dependencies] above -- psycopg2-binary is pulled
+    # in here solely so the test suite can import that module at all.
+    "psycopg2-binary>=2.9.9",
+]
+
 [project.urls]
 Homepage = "https://github.com/KalderosLLC/kald-devops"
 Repository = "https://github.com/KalderosLLC/kald-devops"
@@ -44,3 +53,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
 kald_devops = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

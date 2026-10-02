@@ -21,6 +21,12 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
+      - name: Install tox
+        run: pip install tox
+
+      - name: Run tests
+        run: tox -e test -- -v
+
       - name: Install build dependencies
         run: pip install build
 

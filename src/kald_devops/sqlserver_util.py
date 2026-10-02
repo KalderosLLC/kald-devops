@@ -4,16 +4,19 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import sys
+
+from prettytable import PrettyTable
 
 # ---------------------------------------------------------------------------
 # Logging - single root logger; all output goes to stdout via StreamHandler
 # ---------------------------------------------------------------------------
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    handlers=[logging.StreamHandler(sys.stderr)],
+    format="%(asctime)s %(levelname)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stderr,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,9 +102,6 @@ class Application:
     # ------------------------------------------------------------------
     def _make_table(self, field_names: list[str]):
         """Return a PrettyTable configured to never wrap cell content."""
-        from prettytable import PrettyTable  # noqa: PLC0415
-        import shutil                        # noqa: PLC0415
-
         terminal_width = shutil.get_terminal_size(fallback=(220, 24)).columns
         self.log.debug("Terminal width detected as %d columns.", terminal_width)
 
@@ -179,15 +179,6 @@ class Application:
             self.log.error(
                 "The 'pyodbc' package is not installed.  "
                 "Install it with:  pip install pyodbc"
-            )
-            return 1
-
-        try:
-            from prettytable import PrettyTable  # noqa: PLC0415
-        except ModuleNotFoundError:
-            self.log.error(
-                "The 'prettytable' package is not installed.  "
-                "Install it with:  pip install prettytable"
             )
             return 1
 
