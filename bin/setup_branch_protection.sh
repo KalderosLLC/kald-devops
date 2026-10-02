@@ -2,7 +2,7 @@
 #
 # Setup/remove branch protection for main branch
 #
-# Usage: ./setup_branch_protection.sh [-r|--remove]
+# Usage: setup_branch_protection.sh [-r|--remove]
 #
 
 set -e
@@ -40,7 +40,7 @@ if [[ "$REMOVE" == true ]]; then
     "repos/$REPO/branches/$BRANCH/protection"
 
   echo ""
-  echo "✅ Branch protection removed!"
+  echo "Branch protection removed."
   echo ""
   echo "Verify at: https://github.com/$REPO/settings/branches"
 else
@@ -56,7 +56,12 @@ else
     "require_code_owner_reviews": false,
     "required_approving_review_count": 1
   },
-  "required_status_checks": null,
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      { "context": "test" }
+    ]
+  },
   "enforce_admins": true,
   "restrictions": null,
   "allow_force_pushes": false,
@@ -77,15 +82,16 @@ EOF
     "repos/$REPO/branches/$BRANCH/protection"
 
   echo ""
-  echo "✅ Branch protection configured!"
+  echo "Branch protection configured."
   echo ""
   echo "Settings applied to '$BRANCH':"
-  echo "  ✓ Require 1 pull request review"
-  echo "  ✓ Dismiss stale approvals"
-  echo "  ✓ Enforce admins"
-  echo "  ✓ Prevent force pushes"
-  echo "  ✓ Prevent deletions"
-  echo "  ✓ Require conversation resolution"
+  echo "  - Require 1 pull request review"
+  echo "  - Dismiss stale approvals"
+  echo "  - Require the 'test' status check to pass (.github/workflows/test.yml), branch must be up to date"
+  echo "  - Enforce admins"
+  echo "  - Prevent force pushes"
+  echo "  - Prevent deletions"
+  echo "  - Require conversation resolution"
   echo ""
   echo "Verify at: https://github.com/$REPO/settings/branches"
 fi

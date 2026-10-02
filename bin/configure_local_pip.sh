@@ -3,7 +3,7 @@
 # Configure local pip to install kald-devops from GitHub Pages
 #
 # Usage:
-#   ./configure_local_pip.sh
+#   configure_local_pip.sh
 #
 # This script:
 # 1. Creates ~/.config/pip/pip.conf

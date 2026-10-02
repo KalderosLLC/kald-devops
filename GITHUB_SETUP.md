@@ -20,7 +20,7 @@ gh auth login
 Run the configuration script:
 
 ```bash
-./configure_github_repo.sh
+configure_github_repo.sh
 ```
 
 This handles all settings in one command.
@@ -179,7 +179,7 @@ gh release list --repo $REPO
 After the repository is set up, configure pip locally to install kald-devops:
 
 ```bash
-./configure_local_pip.sh
+configure_local_pip.sh
 ```
 
 This script:

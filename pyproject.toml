@@ -31,6 +31,7 @@ classifiers = [
 [project.optional-dependencies]
 test = [
     "pytest>=7.4",
+    "pytest-cov>=4.1",
     # postgres_util.py imports psycopg2 unconditionally at module level, but it
     # isn't declared in [project.dependencies] above -- psycopg2-binary is pulled
     # in here solely so the test suite can import that module at all.
@@ -57,3 +58,9 @@ kald_devops = ["py.typed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+source = ["kald_devops"]
+
+[tool.coverage.report]
+show_missing = true
