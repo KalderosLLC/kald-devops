@@ -13,7 +13,7 @@ import tempfile
 import psycopg2
 import requests
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stderr)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s", datefmt="%Y-%m-%d %H:%M:%S", stream=sys.stderr)
 log = logging.getLogger(__name__)
 
 REQUIRED_VARS = ["DB_HOST", "DB_USER", "DB_PASSWORD"]

@@ -134,6 +134,46 @@ def make_gh_headers(token):
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
+def resolve_pipeline_tokens(headers, tokens, all_defs, fetch_detail, kind_label, get_repo=lambda v: v):
+    """Resolve a mixed list of ID-or-repo-name tokens against all_defs (a list of pipeline/
+    build definitions, each a dict with at least "id" and "name"). Numeric tokens are matched
+    directly by ID; non-numeric tokens are matched by repository name, resolved concurrently
+    via fetch_detail(headers, definition_id) for every definition in all_defs.
+
+    get_repo extracts the comparable repo name from whatever fetch_detail returns (plain repo
+    string, or e.g. a (repo, stages) tuple) -- only used when there are non-numeric tokens.
+
+    Returns (matched_defs_deduped_by_id, detail_map), where detail_map maps definition ID to
+    fetch_detail's result for every definition in all_defs, or {} if there were no non-numeric
+    tokens to resolve (so no fetching was needed)."""
+    id_tokens = [t for t in tokens if t.isdigit()]
+    repo_tokens = [t for t in tokens if not t.isdigit()]
+    raw_defs = []
+
+    for t in id_tokens:
+        matches = [d for d in all_defs if str(d["id"]) == t]
+        if matches:
+            raw_defs.extend(matches)
+        else:
+            log.warning("No %s found with ID %s", kind_label, t)
+
+    detail_map = {}
+    if repo_tokens:
+        log.debug("Resolving %s(s) by repository: %s", kind_label, repo_tokens)
+        with ThreadPoolExecutor() as executor:
+            futures = {d["id"]: executor.submit(fetch_detail, headers, d["id"]) for d in all_defs}
+            detail_map = {did: f.result() for did, f in futures.items()}
+        for t in repo_tokens:
+            matches = [d for d in all_defs if get_repo(detail_map.get(d["id"])).lower() == t.lower()]
+            if matches:
+                raw_defs.extend(matches)
+            else:
+                log.warning("No %s found for repository '%s'", kind_label, t)
+
+    seen_ids = set()
+    deduped = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
+    return deduped, detail_map
+
 def post_to_teams_webhook(webhook_url, title, message):
     """POST message to a Microsoft Teams Incoming Webhook (or an equivalent Power Automate flow
     trigger configured to accept the same shape) as a MessageCard. Returns True on success;
@@ -196,35 +236,10 @@ def cmd_build(args, headers):
         log.error("Missing required environment variable: PIPELINES")
         sys.exit(1)
 
-    id_tokens = [t for t in tokens if t.isdigit()]
-    repo_tokens = [t for t in tokens if not t.isdigit()]
-    raw_defs = []
-
-    for t in id_tokens:
-        matches = [d for d in all_defs if str(d["id"]) == t]
-        if matches:
-            raw_defs.extend(matches)
-        else:
-            log.warning("No build pipeline found with ID %s", t)
-
-    if repo_tokens:
-        log.debug("Resolving build pipeline(s) by repository: %s", repo_tokens)
-        with ThreadPoolExecutor() as executor:
-            repo_futures = {d["id"]: executor.submit(fetch_build_def_repo, headers, d["id"]) for d in all_defs}
-            repo_map = {did: f.result() for did, f in repo_futures.items()}
-        for t in repo_tokens:
-            matches = [d for d in all_defs if repo_map.get(d["id"], "").lower() == t.lower()]
-            if matches:
-                raw_defs.extend(matches)
-            else:
-                log.warning("No build pipeline found for repository '%s'", t)
-
-    if not raw_defs:
+    folder_defs, _ = resolve_pipeline_tokens(headers, tokens, all_defs, fetch_build_def_repo, "build pipeline")
+    if not folder_defs:
         log.error("No build pipelines matched PIPELINES='%s'", os.getenv("PIPELINES"))
         sys.exit(1)
-
-    seen_ids: set = set()
-    folder_defs = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
 
     log.debug("Found %d pipeline(s) to build", len(folder_defs))
 
@@ -327,35 +342,10 @@ def cmd_list_build_pipelines(args, headers):
 
     tokens = [r.strip() for r in raw_repos.split(",") if r.strip()]
 
-    id_tokens = [t for t in tokens if t.isdigit()]
-    repo_tokens = [t for t in tokens if not t.isdigit()]
-    raw_defs = []
-
-    for t in id_tokens:
-        matches = [d for d in all_defs if str(d["id"]) == t]
-        if matches:
-            raw_defs.extend(matches)
-        else:
-            log.warning("No build pipeline found with ID %s", t)
-
-    if repo_tokens:
-        log.debug("Resolving build pipeline(s) by repository: %s", repo_tokens)
-        with ThreadPoolExecutor() as executor:
-            repo_futures = {d["id"]: executor.submit(fetch_build_def_repo, headers, d["id"]) for d in all_defs}
-            repo_map = {did: f.result() for did, f in repo_futures.items()}
-        for t in repo_tokens:
-            matches = [d for d in all_defs if repo_map.get(d["id"], "").lower() == t.lower()]
-            if matches:
-                raw_defs.extend(matches)
-            else:
-                log.warning("No build pipeline found for repository '%s'", t)
-
-    if not raw_defs:
+    pipelines, _ = resolve_pipeline_tokens(headers, tokens, all_defs, fetch_build_def_repo, "build pipeline")
+    if not pipelines:
         log.error("No build pipelines matched REPOSITORIES='%s'", os.getenv("REPOSITORIES"))
         sys.exit(1)
-
-    seen_ids = set()
-    pipelines = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
     pipelines.sort(key=lambda d: d["name"].lower())
 
     # Get repository for each pipeline
@@ -663,35 +653,12 @@ def cmd_list_pipelines(args, headers):
         log.error("Missing required environment variable: PIPELINES")
         sys.exit(1)
 
-    id_tokens = [t for t in tokens if t.isdigit()]
-    repo_tokens = [t for t in tokens if not t.isdigit()]
-    raw_defs = []
-
-    for t in id_tokens:
-        matches = [d for d in all_defs if str(d["id"]) == t]
-        if matches:
-            raw_defs.extend(matches)
-        else:
-            log.warning("No release pipeline found with ID %s", t)
-
-    if repo_tokens:
-        log.debug("Resolving pipeline(s) by repository: %s", repo_tokens)
-        with ThreadPoolExecutor() as executor:
-            detail_futures = {d["id"]: executor.submit(fetch_pipeline_repo_and_stages, headers, d["id"]) for d in all_defs}
-            repo_map = {did: f.result()[0] for did, f in detail_futures.items()}
-        for t in repo_tokens:
-            matches = [d for d in all_defs if repo_map.get(d["id"], "").lower() == t.lower()]
-            if matches:
-                raw_defs.extend(matches)
-            else:
-                log.warning("No release pipeline found for repository '%s'", t)
-
-    if not raw_defs:
+    folder_defs, _ = resolve_pipeline_tokens(
+        headers, tokens, all_defs, fetch_pipeline_repo_and_stages, "release pipeline", get_repo=lambda v: v[0]
+    )
+    if not folder_defs:
         log.error("No pipelines matched PIPELINES='%s'", os.getenv("PIPELINES"))
         sys.exit(1)
-
-    seen_ids: set = set()
-    folder_defs = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
 
     folder_defs.sort(key=lambda d: d["name"].lower())
 
@@ -968,38 +935,15 @@ def cmd_deploy(args, headers):
         log.error("Missing required environment variable: PIPELINES")
         sys.exit(1)
 
-    repo_stage_map = {}  # {definition_id: (repo, stages)} populated when repo_tokens are resolved
-    id_tokens = [t for t in tokens if t.isdigit()]
-    repo_tokens = [t for t in tokens if not t.isdigit()]
-    raw_defs = []
-
-    for t in id_tokens:
-        matches = [d for d in all_defs if str(d["id"]) == t]
-        if matches:
-            raw_defs.extend(matches)
-        else:
-            log.warning("No release pipeline found with ID %s", t)
-
-    if repo_tokens:
-        log.debug("Resolving pipeline(s) by repository: %s", repo_tokens)
-        with ThreadPoolExecutor() as executor:
-            detail_futures = {d["id"]: executor.submit(fetch_pipeline_repo_and_stages, headers, d["id"]) for d in all_defs}
-            repo_stage_map = {did: f.result() for did, f in detail_futures.items()}
-        repos = {did: rs[0] for did, rs in repo_stage_map.items()}
-        for t in repo_tokens:
-            matches = [d for d in all_defs if repos.get(d["id"], "").lower() == t.lower()]
-            if matches:
-                raw_defs.extend(matches)
-            else:
-                log.warning("No release pipeline found for repository '%s'", t)
-
-    if not raw_defs:
+    # repo_stage_map: {definition_id: (repo, stages)} for every definition in all_defs, populated
+    # only when resolve_pipeline_tokens needed to resolve non-numeric (repo-name) tokens; reused
+    # below to avoid re-fetching stages for pipelines already resolved this way.
+    folder_defs, repo_stage_map = resolve_pipeline_tokens(
+        headers, tokens, all_defs, fetch_pipeline_repo_and_stages, "release pipeline", get_repo=lambda v: v[0]
+    )
+    if not folder_defs:
         log.error("No pipelines matched PIPELINES='%s'", os.getenv("PIPELINES"))
         sys.exit(1)
-
-    # Deduplicate pipelines by ID
-    seen_ids = set()
-    folder_defs = [d for d in raw_defs if d["id"] not in seen_ids and not seen_ids.add(d["id"])]
 
     # Validate requested environments against what's actually defined across all selected pipelines
     log.debug("Validating environment name(s) across %d pipeline(s)", len(folder_defs))
@@ -1129,7 +1073,12 @@ def cmd_deploy(args, headers):
 def cmd_add_environment_to_pipelines(args, headers):
     """Add a new environment to multiple release pipelines."""
     pipelines_str = os.getenv("PIPELINES", "")
-    env_name = os.getenv("ENVIRONMENT_NAME", "Load")
+    env_name = os.getenv("ENVIRONMENT", "")
+
+    if not env_name:
+        print_subcommand_usage("add_environment_to_pipelines")
+        log.error("Missing required environment variable: ENVIRONMENT (name of the new environment/stage to add)")
+        sys.exit(1)
 
     if not pipelines_str:
         print_subcommand_usage("add_environment_to_pipelines")
@@ -2398,67 +2347,6 @@ def cmd_apply_flyway(args):
 # Help
 # =============================================================================
 
-SUBCOMMAND_ENV_VARS = [
-    ("list_repositories",     "GITHUB_TOKEN",          "required", "GitHub personal access token with read:org and repo scopes"),
-    ("tag_repository",        "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
-    ("tag_repository",        "TAG",                   "required", "Git tag name to create (e.g. v1.21.0-rc)"),
-    ("tag_repository",        "REPOSITORIES",          "required", "Comma-separated list of full GitHub repository paths to tag (e.g. KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway); when KalderosLLC/phoenix is included, phoenix-data-gateway is tagged implicitly and the submodule pointer is updated before tagging phoenix - do not also list phoenix-data-gateway separately"),
-    ("tag_repository",        "BRANCH",                "optional", "Source branch to tag (default: main, e.g. hotfix/v1.19.0); applies to all repositories"),
-    ("tag_repository",        "PDG_TAG_OR_BRANCH",     "optional", "Tag or branch to pin phoenix-data-gateway to when KalderosLLC/phoenix is tagged implicitly (default: BRANCH); checked as an existing tag first, then as a branch, and errors out if neither exists in phoenix-data-gateway"),
-    ("create_release_notes",  "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
-    ("create_release_notes",  "REPOSITORY",            "required", "Full GitHub repository path (e.g. KalderosLLC/phoenix)"),
-    ("create_release_notes",  "TAG",                   "required", "Tag name to create the release for"),
-    ("git_tickets",           "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
-    ("git_tickets",           "REPOSITORY",            "required", "Full GitHub repository path (e.g. KalderosLLC/phoenix)"),
-    ("git_tickets",           "TAG",                   "required", "Head tag or branch to inspect"),
-    ("git_tickets",           "FROM_TAG",              "optional", "Base tag or branch (defaults to last 100 commits of TAG)"),
-    ("git_tickets",           "JIRA_EMAIL",            "optional", "Atlassian account email for fetching ticket summaries"),
-    ("git_tickets",           "JIRA_TOKEN",            "optional", "Atlassian API token for fetching ticket summaries (omit to skip summary lookup)"),
-    ("list_environments",     "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("list_recent_builds",   "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("list_recent_builds",   "COUNT",                  "optional", "Number of recent builds to show per pipeline (default: 8)"),
-    ("list_build_pipelines",  "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("list_build_pipelines",  "REPOSITORIES",          "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("list_pipelines",        "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("list_pipelines",        "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("list_pipelines",        "ENVIRONMENTS",          "optional", "Comma-delimited environments; adds environment and current_version columns, sorted by pipeline then environment"),
-    ("build_pipelines",       "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("build_pipelines",       "BRANCH_OR_TAG",         "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to build from (default: main)"),
-    ("build_pipelines",       "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("calc_pr",                "GITHUB_TOKEN",          "required", "GitHub personal access token with repo scope"),
-    ("apply_terraform",       "GITHUB_TOKEN",          "required", "GitHub personal access token with workflow scope"),
-    ("apply_terraform",       "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
-    ("apply_terraform",       "PR",                    "required", "Pull request number (use calc_pr to find the PR with the latest successful terraform-plan-eastus.yml run)"),
-    ("apply_flyway",          "GITHUB_TOKEN",          "required", "GitHub personal access token with workflow scope"),
-    ("apply_flyway",          "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
-    ("apply_flyway",          "BRANCH_OR_TAG",         "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main); verified before dispatch (default: main)"),
-    ("deploy_pipelines",      "AZURE_DEVOPS_EXT_PAT",  "required", "Azure DevOps personal access token"),
-    ("deploy_pipelines",      "BRANCH_OR_TAG",         "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to deploy from"),
-    ("deploy_pipelines",      "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
-    ("deploy_pipelines",      "PIPELINES",             "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
-    ("teams_release",         "ENVIRONMENTS",          "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
-    ("teams_release",         "BRANCH_OR_TAG",         "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main)"),
-    ("teams_release",         "TEAMS_WEBHOOK_URL",     "optional", "Microsoft Teams Incoming Webhook (or equivalent Power Automate flow trigger) URL to post the release notification to"),
-]
-
-_SUBCOMMAND_DESCS = [
-    ("usage",                "Show this usage information"),
-    ("list_repositories",    "List all repositories in the KalderosLLC GitHub org"),
-    ("tag_repository",       "Create and push a git tag to one or more repositories; when KalderosLLC/phoenix is listed, also tags phoenix-data-gateway and updates the submodule pointer"),
-    ("create_release_notes", "Create a GitHub release with auto-generated notes"),
-    ("git_tickets",          "List Jira tickets from merge commits between two refs"),
-    ("list_build_pipelines", "List Azure DevOps build pipelines with repository"),
-    ("list_environments",    "List all unique environments across release pipelines"),
-    ("list_recent_builds",  "List all release pipelines with recent tags and branches"),
-    ("list_pipelines",       "List release definitions with repository and recent refs"),
-    ("build_pipelines",      "Trigger Azure DevOps build pipelines"),
-    ("calc_pr",               "Print the PR with the latest successful terraform-plan-eastus.yml run"),
-    ("apply_terraform",      "Trigger the terraform-apply-eastus workflow"),
-    ("apply_flyway",         "Trigger the flywayMigration workflow"),
-    ("deploy_pipelines",     "Trigger Azure DevOps release pipeline deployments"),
-    ("teams_release",        "Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set"),
-]
-
 def cmd_teams_release(args):
     environments = os.getenv("ENVIRONMENTS")
     branch_or_tag = os.getenv("BRANCH_OR_TAG")
@@ -2498,25 +2386,143 @@ def cmd_teams_release(args):
 
     sys.exit(0)
 
+# Single source of truth for subcommand metadata -- previously this was three separate,
+# hand-synchronized lists/registrations (argparse help text, _SUBCOMMAND_DESCS, and
+# SUBCOMMAND_ENV_VARS) which had already drifted: add_environment_to_pipelines's argparse
+# help still referenced the old ENVIRONMENT_NAME variable after the code was renamed to
+# ENVIRONMENT, and add_environment_to_pipelines/create_releases_from_artifact had no env-var
+# help entries at all. Each subcommand is now exactly one entry here.
+def _sub(name, argparse_help, usage_desc, handler=None, needs_azure=False, env_vars=()):
+    return {
+        "name": name,
+        "argparse_help": argparse_help,
+        "usage_desc": usage_desc,
+        "handler": handler,
+        "needs_azure": needs_azure,
+        "env_vars": list(env_vars),
+    }
+
+SUBCOMMANDS = [
+    _sub("usage", "Show usage information and environment variables", "Show this usage information"),
+    _sub("list_environments", "List all unique environments across all release pipelines",
+         "List all unique environments across release pipelines", cmd_list_environments, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+         ]),
+    _sub("list_recent_builds", "List all release pipelines with recent tags and branches (COUNT, default 8)",
+         "List all release pipelines with recent tags and branches", cmd_list_recent_builds, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("COUNT", "optional", "Number of recent builds to show per pipeline (default: 8)"),
+         ]),
+    _sub("list_build_pipelines", "List all build pipelines (filter via REPOSITORIES)",
+         "List Azure DevOps build pipelines with repository", cmd_list_build_pipelines, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("REPOSITORIES", "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
+         ]),
+    _sub("list_pipelines", "List all release definitions with their git repository (set STAGE for current_version)",
+         "List release definitions with repository and recent refs", cmd_list_pipelines, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("PIPELINES", "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
+             ("ENVIRONMENTS", "optional", "Comma-delimited environments; adds environment and current_version columns, sorted by pipeline then environment"),
+         ]),
+    _sub("build_pipelines", "Trigger build pipelines (uses BRANCH_OR_TAG if set, otherwise main; filter via PIPELINES)",
+         "Trigger Azure DevOps build pipelines", cmd_build, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("BRANCH_OR_TAG", "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to build from (default: main)"),
+             ("PIPELINES", "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
+         ]),
+    _sub("calc_pr", "Print the PR whose terraform-plan-eastus.yml run last succeeded (GITHUB_TOKEN)",
+         "Print the PR with the latest successful terraform-plan-eastus.yml run", cmd_calc_pr, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with repo scope"),
+         ]),
+    _sub("deploy_pipelines", "Trigger deployments for release pipelines matching BRANCH_OR_TAG to ENVIRONMENTS (filter via PIPELINES)",
+         "Trigger Azure DevOps release pipeline deployments", cmd_deploy, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("BRANCH_OR_TAG", "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main) to deploy from"),
+             ("ENVIRONMENTS", "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
+             ("PIPELINES", "required", "Comma-delimited pipeline IDs or repository paths (e.g. KalderosLLC/phoenix); filters to pipelines with a matching repository path"),
+         ]),
+    _sub("add_environment_to_pipelines", "Add a new environment to release pipeline definitions (PIPELINES, ENVIRONMENT)",
+         "Add a new environment to one or more release pipeline definitions, cloning an existing environment as a template",
+         cmd_add_environment_to_pipelines, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("PIPELINES", "required", "Comma-separated list of release pipeline names to add the environment to"),
+             ("ENVIRONMENT", "required", "Name of the new environment/stage to add (cloned from an existing 'Preview' environment, or the first available one, as a template)"),
+         ]),
+    _sub("create_releases_from_artifact", "Create new releases for pipelines, reusing an existing artifact (PIPELINES, SOURCE_RELEASE optional)",
+         "Create new releases for pipelines, reusing an existing build artifact",
+         cmd_create_releases_from_artifact, needs_azure=True, env_vars=[
+             ("AZURE_DEVOPS_EXT_PAT", "required", "Azure DevOps personal access token"),
+             ("PIPELINES", "required", "Comma-separated list of release pipeline names to create new releases for"),
+             ("SOURCE_RELEASE", "optional", "Name of an existing release to reuse the artifact from (defaults to the first release found with a usable artifact)"),
+         ]),
+    _sub("tag_repository", "Create and push a git tag from a source branch (BRANCH -> NAME)",
+         "Create and push a git tag to one or more repositories; when KalderosLLC/phoenix is listed, also tags phoenix-data-gateway and updates the submodule pointer",
+         cmd_tag, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with repo scope"),
+             ("TAG", "required", "Git tag name to create (e.g. v1.21.0-rc)"),
+             ("REPOSITORIES", "required", "Comma-separated list of full GitHub repository paths to tag (e.g. KalderosLLC/phoenix,KalderosLLC/phoenix-snowflake-gateway); when KalderosLLC/phoenix is included, phoenix-data-gateway is tagged implicitly and the submodule pointer is updated before tagging phoenix - do not also list phoenix-data-gateway separately"),
+             ("BRANCH", "optional", "Source branch to tag (default: main, e.g. hotfix/v1.19.0); applies to all repositories"),
+             ("PDG_TAG_OR_BRANCH", "optional", "Tag or branch to pin phoenix-data-gateway to when KalderosLLC/phoenix is tagged implicitly (default: BRANCH); checked as an existing tag first, then as a branch, and errors out if neither exists in phoenix-data-gateway"),
+         ]),
+    _sub("list_repositories", "List all repositories under the KalderosLLC GitHub org",
+         "List all repositories in the KalderosLLC GitHub org", cmd_list_repositories, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with read:org and repo scopes"),
+         ]),
+    _sub("create_release_notes", "Create a GitHub release with auto-generated release notes (REPOSITORY, TAG)",
+         "Create a GitHub release with auto-generated notes", cmd_create_release_notes, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with repo scope"),
+             ("REPOSITORY", "required", "Full GitHub repository path (e.g. KalderosLLC/phoenix)"),
+             ("TAG", "required", "Tag name to create the release for"),
+         ]),
+    _sub("git_tickets", "List Jira tickets (CES-*, T340B-*) from merge commits between FROM_TAG and TAG",
+         "List Jira tickets from merge commits between two refs", cmd_git_tickets, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with repo scope"),
+             ("REPOSITORY", "required", "Full GitHub repository path (e.g. KalderosLLC/phoenix)"),
+             ("TAG", "required", "Head tag or branch to inspect"),
+             ("FROM_TAG", "optional", "Base tag or branch (defaults to last 100 commits of TAG)"),
+             ("JIRA_EMAIL", "optional", "Atlassian account email for fetching ticket summaries"),
+             ("JIRA_TOKEN", "optional", "Atlassian API token for fetching ticket summaries (omit to skip summary lookup)"),
+         ]),
+    _sub("apply_terraform", "Trigger the terraform-apply-eastus workflow for a PR and one or more environments (PR, ENVIRONMENTS)",
+         "Trigger the terraform-apply-eastus workflow", cmd_apply_terraform, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with workflow scope"),
+             ("ENVIRONMENTS", "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
+             ("PR", "required", "Pull request number (use calc_pr to find the PR with the latest successful terraform-plan-eastus.yml run)"),
+         ]),
+    _sub("apply_flyway", "Trigger the flywayMigration workflow for one or more environments (ENVIRONMENTS, optional BRANCH_OR_TAG)",
+         "Trigger the flywayMigration workflow", cmd_apply_flyway, env_vars=[
+             ("GITHUB_TOKEN", "required", "GitHub personal access token with workflow scope"),
+             ("ENVIRONMENTS", "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
+             ("BRANCH_OR_TAG", "optional", "Semver tag (e.g. v1.21.0) or branch name (e.g. main); verified before dispatch (default: main)"),
+         ]),
+    _sub("teams_release", "Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set (ENVIRONMENTS, BRANCH_OR_TAG)",
+         "Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set", cmd_teams_release, env_vars=[
+             ("ENVIRONMENTS", "required", "Comma-delimited list of target environments (e.g. Stage,Prod)"),
+             ("BRANCH_OR_TAG", "required", "Semver tag (e.g. v1.21.0) or branch name (e.g. main)"),
+             ("TEAMS_WEBHOOK_URL", "optional", "Microsoft Teams Incoming Webhook (or equivalent Power Automate flow trigger) URL to post the release notification to"),
+         ]),
+]
+
+_SUBCOMMANDS_BY_NAME = {s["name"]: s for s in SUBCOMMANDS}
+
+
+def _env_var_order(v):
+    var, req, _ = v
+    return (0 if req == "required" else 1, 1 if var == "BRANCH_OR_TAG" else 0)
+
+
 def print_subcommand_usage(subcommand):
     prog = os.path.basename(sys.argv[0])
-    sub_desc = next((d for s, d in _SUBCOMMAND_DESCS if s == subcommand), "")
-    var_w = max((len(row[1]) for row in SUBCOMMAND_ENV_VARS if row[0] == subcommand), default=8)
-
-    grouped = {}
-    for sub, var, req, desc_text in SUBCOMMAND_ENV_VARS:
-        if sub == subcommand:
-            grouped.setdefault(sub, []).append((var, req, desc_text))
-
-    def _var_order(v):
-        var, req, _ = v
-        return (0 if req == "required" else 1, 1 if var == "BRANCH_OR_TAG" else 0)
+    sub = _SUBCOMMANDS_BY_NAME.get(subcommand, {})
+    sub_desc = sub.get("usage_desc", "")
+    env_vars = sub.get("env_vars", [])
+    var_w = max((len(var) for var, _, _ in env_vars), default=8)
 
     lines = [f"usage: {prog} [-v] {subcommand}", "", f"  {sub_desc}"]
-    if subcommand in grouped:
+    if env_vars:
         lines.append("")
         lines.append("  environment variables:")
-        for var, req, desc_text in sorted(grouped[subcommand], key=_var_order):
+        for var, req, desc_text in sorted(env_vars, key=_env_var_order):
             lines.append(f"    {var:<{var_w}}  ({req})  {desc_text}")
     lines.append("")
     print("\n".join(lines), file=sys.stderr)
@@ -2524,8 +2530,8 @@ def print_subcommand_usage(subcommand):
 
 def cmd_usage(args):
     prog = os.path.basename(sys.argv[0])
-    sub_w = max(len(s) for s, _ in _SUBCOMMAND_DESCS)
-    var_w = max(len(row[1]) for row in SUBCOMMAND_ENV_VARS)
+    sub_w = max(len(s["name"]) for s in SUBCOMMANDS)
+    var_w = max((len(var) for s in SUBCOMMANDS for var, _, _ in s["env_vars"]), default=8)
 
     lines = [
         "  _  __     _     _                    ",
@@ -2546,24 +2552,17 @@ def cmd_usage(args):
         "",
         "subcommands:",
     ]
-    for sub, desc in _SUBCOMMAND_DESCS:
-        lines.append(f"  {sub:<{sub_w}}  {desc}")
-
-    grouped = {}
-    for sub, var, req, desc in SUBCOMMAND_ENV_VARS:
-        grouped.setdefault(sub, []).append((var, req, desc))
+    for s in SUBCOMMANDS:
+        lines.append(f"  {s['name']:<{sub_w}}  {s['usage_desc']}")
 
     lines.append("")
     lines.append("environment variables:")
-    for sub, _ in _SUBCOMMAND_DESCS:
-        if sub not in grouped:
+    for s in SUBCOMMANDS:
+        if not s["env_vars"]:
             continue
         lines.append("")
-        lines.append(f"  {sub}")
-        def _var_order(v):
-            var, req, _ = v
-            return (0 if req == "required" else 1, 1 if var == "BRANCH_OR_TAG" else 0)
-        for var, req, desc in sorted(grouped[sub], key=_var_order):
+        lines.append(f"  {s['name']}")
+        for var, req, desc in sorted(s["env_vars"], key=_env_var_order):
             lines.append(f"    {var:<{var_w}}  ({req})  {desc}")
 
     print("\n".join(lines))
@@ -2580,24 +2579,9 @@ def main():
     parser.add_argument("-j", "--json", action="store_true", help="Output tables as JSON")
     subparsers = parser.add_subparsers(dest="command", required=False)
 
-    subparsers.add_parser("usage",  help="Show usage information and environment variables")
-    subparsers.add_parser("help",   help="Alias for usage")
-    subparsers.add_parser("list_environments", help="List all unique environments across all release pipelines")
-    subparsers.add_parser("list_recent_builds", help="List all release pipelines with recent tags and branches (COUNT, default 8)")
-    subparsers.add_parser("list_build_pipelines", help="List all build pipelines (filter via REPOSITORIES)")
-    subparsers.add_parser("list_pipelines", help="List all release definitions with their git repository (set STAGE for current_version)")
-    subparsers.add_parser("build_pipelines",  help="Trigger build pipelines (uses BRANCH_OR_TAG if set, otherwise main; filter via PIPELINES)")
-    subparsers.add_parser("calc_pr", help="Print the PR whose terraform-plan-eastus.yml run last succeeded (GITHUB_TOKEN)")
-    subparsers.add_parser("deploy_pipelines", help="Trigger deployments for release pipelines matching BRANCH_OR_TAG to ENVIRONMENTS (filter via PIPELINES)")
-    subparsers.add_parser("add_environment_to_pipelines", help="Add a new environment to release pipeline definitions (PIPELINES, ENVIRONMENT_NAME)")
-    subparsers.add_parser("create_releases_from_artifact", help="Create new releases for pipelines, reusing an existing artifact (PIPELINES, SOURCE_RELEASE optional)")
-    subparsers.add_parser("tag_repository", help="Create and push a git tag from a source branch (BRANCH -> NAME)")
-    subparsers.add_parser("list_repositories", help="List all repositories under the KalderosLLC GitHub org")
-    subparsers.add_parser("create_release_notes", help="Create a GitHub release with auto-generated release notes (REPOSITORY, TAG)")
-    subparsers.add_parser("git_tickets", help="List Jira tickets (CES-*, T340B-*) from merge commits between FROM_TAG and TAG")
-    subparsers.add_parser("apply_terraform", help="Trigger the terraform-apply-eastus workflow for a PR and one or more environments (PR, ENVIRONMENTS)")
-    subparsers.add_parser("apply_flyway", help="Trigger the flywayMigration workflow for one or more environments (ENVIRONMENTS, optional BRANCH_OR_TAG)")
-    subparsers.add_parser("teams_release", help="Prepare a release notification message, and post it to Teams if TEAMS_WEBHOOK_URL is set (ENVIRONMENTS, BRANCH_OR_TAG)")
+    for s in SUBCOMMANDS:
+        subparsers.add_parser(s["name"], help=s["argparse_help"])
+    subparsers.add_parser("help", help="Alias for usage")
 
     args = parser.parse_args()
 
@@ -2611,45 +2595,22 @@ def main():
     if not args.command or args.command in ("usage", "help"):
         cmd_usage(args)
 
-    # Subcommands that don't need an Azure DevOps PAT / headers.
-    NO_AUTH_COMMANDS = {
-        "tag_repository":       cmd_tag,
-        "list_repositories":    cmd_list_repositories,
-        "create_release_notes": cmd_create_release_notes,
-        "git_tickets":          cmd_git_tickets,
-        "calc_pr":              cmd_calc_pr,
-        "apply_terraform":      cmd_apply_terraform,
-        "apply_flyway":         cmd_apply_flyway,
-        "teams_release":        cmd_teams_release,
-    }
+    sub = _SUBCOMMANDS_BY_NAME.get(args.command)
+    if sub is None or sub["handler"] is None:
+        return
 
-    if args.command in NO_AUTH_COMMANDS:
-        NO_AUTH_COMMANDS[args.command](args)
+    if not sub["needs_azure"]:
+        sub["handler"](args)
+        return
 
     pat = os.getenv("AZURE_DEVOPS_EXT_PAT")
-    missing = [name for name, val in [("AZURE_DEVOPS_EXT_PAT", pat)] if val is None]
-    if missing:
+    if pat is None:
         print_subcommand_usage(args.command)
-        for name in missing:
-            log.error("Missing required environment variable: %s", name)
+        log.error("Missing required environment variable: AZURE_DEVOPS_EXT_PAT")
         sys.exit(1)
 
     headers = make_headers(pat)
-
-    # Subcommands that need an Azure DevOps PAT / headers.
-    AZURE_COMMANDS = {
-        "list_build_pipelines": cmd_list_build_pipelines,
-        "list_pipelines":     cmd_list_pipelines,
-        "list_recent_builds": cmd_list_recent_builds,
-        "list_environments":  cmd_list_environments,
-        "build_pipelines":    cmd_build,
-        "deploy_pipelines":   cmd_deploy,
-        "add_environment_to_pipelines": cmd_add_environment_to_pipelines,
-        "create_releases_from_artifact": cmd_create_releases_from_artifact,
-    }
-
-    if args.command in AZURE_COMMANDS:
-        AZURE_COMMANDS[args.command](args, headers)
+    sub["handler"](args, headers)
 
 if __name__ == "__main__":
     main()
