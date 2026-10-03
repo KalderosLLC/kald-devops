@@ -41,7 +41,14 @@ def flex_width(num_cols, *fixed_widths):
 def make_table(*fields):
     t = PrettyTable(list(fields))
     t.max_table_width = _term_width()
+    t.align = "l"  # every table in this codebase left-aligns every column
     return t
+
+def fix_column_width(table, column, width):
+    """Pin a PrettyTable column to an exact width (min == max), the standard PrettyTable
+    idiom for a non-wrapping, non-shrinking column."""
+    table.min_width[column] = width
+    table.max_width[column] = width
 
 def print_table(table, args):
     if getattr(args, "csv", False):
@@ -144,6 +151,38 @@ def parse_pipelines_env():
     if not raw:
         return None
     return [t.strip() for t in raw.split(",") if t.strip()]
+
+def parse_env_list(raw):
+    """Parse a comma-separated env var into a deduped, order-preserving,
+    case-insensitive list of trimmed tokens. Returns [] for a missing/empty value."""
+    if not raw:
+        return []
+    seen = set()
+    result = []
+    for e in (e.strip() for e in raw.split(",") if e.strip()):
+        if e.lower() not in seen:
+            seen.add(e.lower())
+            result.append(e)
+    return result
+
+def require_env_vars(subcommand, **required):
+    """Verify every named env var has a non-empty value -- an explicitly empty string
+    counts as missing, same as unset. If any are missing, print the subcommand's usage/
+    env-var help, log each missing name, and exit(1)."""
+    missing = [name for name, value in required.items() if not value]
+    if missing:
+        print_subcommand_usage(subcommand)
+        for name in missing:
+            log.error("Missing required environment variable: %s", name)
+        sys.exit(1)
+
+def report_success_failure(success, failures):
+    """Print the final 'N successful, M failed' summary for a batch operation and
+    exit(1) if any failures occurred."""
+    print()
+    print(f"{success} successful, {failures} failed")
+    if failures > 0:
+        sys.exit(1)
 
 def make_gh_headers(token):
     return {

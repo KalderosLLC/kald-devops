@@ -89,6 +89,47 @@ def test_parse_pipelines_env_missing_returns_none(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# parse_env_list
+# ---------------------------------------------------------------------------
+
+def test_parse_env_list_splits_strips_and_dedupes_case_insensitively():
+    assert common.parse_env_list(" Stage, qa ,STAGE, Prod ") == ["Stage", "qa", "Prod"]
+
+
+def test_parse_env_list_handles_none_and_empty():
+    assert common.parse_env_list(None) == []
+    assert common.parse_env_list("") == []
+    assert common.parse_env_list("  ,  ,  ") == []
+
+
+# ---------------------------------------------------------------------------
+# require_env_vars
+# ---------------------------------------------------------------------------
+
+def test_require_env_vars_passes_when_all_present():
+    # Must not raise.
+    common.require_env_vars("tag_repository", TAG="v1.0.0", REPOSITORIES="a/b", GITHUB_TOKEN="tok")
+
+
+def test_require_env_vars_treats_empty_string_as_missing(caplog):
+    """An explicitly-set-but-empty env var (e.g. TAG="") must be rejected the same as
+    an unset one -- this unifies a pre-existing inconsistency where some subcommands
+    checked `is None` (accepting empty strings) and others checked falsiness."""
+    with pytest.raises(SystemExit) as exc_info:
+        common.require_env_vars("tag_repository", TAG="", REPOSITORIES="a/b", GITHUB_TOKEN="tok")
+    assert exc_info.value.code == 1
+    assert "Missing required environment variable: TAG" in caplog.text
+
+
+def test_require_env_vars_reports_every_missing_name(caplog):
+    with pytest.raises(SystemExit):
+        common.require_env_vars("tag_repository", TAG=None, REPOSITORIES=None, GITHUB_TOKEN="tok")
+    assert "Missing required environment variable: TAG" in caplog.text
+    assert "Missing required environment variable: REPOSITORIES" in caplog.text
+    assert "Missing required environment variable: GITHUB_TOKEN" not in caplog.text
+
+
+# ---------------------------------------------------------------------------
 # env_sort_key / parse_semver
 # ---------------------------------------------------------------------------
 

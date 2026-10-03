@@ -4,7 +4,7 @@ import os
 import sys
 from datetime import datetime, timedelta, timezone
 
-from kald_devops.common import http_get, make_gh_headers, make_table, print_table, trunc, print_subcommand_usage, extract_gh_error
+from kald_devops.common import http_get, make_gh_headers, make_table, print_table, fix_column_width, trunc, print_subcommand_usage, extract_gh_error
 
 log = logging.getLogger(__name__)
 
@@ -63,12 +63,7 @@ def cmd_list_repositories(args):
     vis_w = 12
     desc_w = 48
     table = make_table("last_modified", "repository", "visibility", "description")
-    table.align["last_modified"] = "l"
-    table.align["repository"] = "l"
-    table.align["visibility"] = "l"
-    table.align["description"] = "l"
-    table.min_width["repository"] = repo_w
-    table.max_width["repository"] = repo_w
+    fix_column_width(table, "repository", repo_w)
     for r, repo_name in zip(repos, repo_names):
         pushed_at = r.get("pushed_at", "")
         last_modified = pushed_at[:10] if pushed_at else "-"
