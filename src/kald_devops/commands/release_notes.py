@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-from kald_devops.common import http_post, make_gh_headers, print_subcommand_usage, extract_gh_error
+from kald_devops.common import http_post, make_gh_headers, require_env_vars, extract_gh_error
 
 log = logging.getLogger(__name__)
 
@@ -13,12 +13,7 @@ def cmd_create_release_notes(args):
     tag = os.getenv("TAG")
     github_token = os.getenv("GITHUB_TOKEN")
 
-    missing = [n for n, v in [("REPOSITORY", repository), ("TAG", tag), ("GITHUB_TOKEN", github_token)] if v is None]
-    if missing:
-        print_subcommand_usage("create_release_notes")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("create_release_notes", REPOSITORY=repository, TAG=tag, GITHUB_TOKEN=github_token)
 
     gh_headers = make_gh_headers(github_token)
 

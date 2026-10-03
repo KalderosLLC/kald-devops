@@ -10,7 +10,7 @@ import requests
 
 from kald_devops.common import (
     http_get, http_post, extract_error, resolve_pipeline_tokens,
-    make_table, print_table, trunc, flex_width,
+    make_table, print_table, fix_column_width, trunc, flex_width,
     organization, project, SEMVER_RE, parse_pipelines_env,
     print_subcommand_usage,
 )
@@ -185,11 +185,6 @@ def cmd_build(args, headers):
     dur_w = max((len(r[4]) for r in poll_results), default=len("duration"))
     name_w = flex_width(5, id_w, bot_w, dur_w, len("status"), len("reason"))
     table = make_table("pipeline_id", "pipeline_name", "branch_or_tag", "duration", "status", "reason")
-    table.align["pipeline_name"] = "l"
-    table.align["branch_or_tag"] = "l"
-    table.align["duration"]      = "l"
-    table.align["status"]        = "l"
-    table.align["reason"]        = "l"
     any_unsuccessful = failure_count > 0
     for pid, pname, bot, build_url, duration, status, reason in poll_results:
         if status == "succeeded":
@@ -233,12 +228,8 @@ def cmd_list_build_pipelines(args, headers):
     name_w = max((len(d["name"]) for d in pipelines), default=len("pipeline_name"))
     repo_w = max((len(repos.get(d["id"], "-")) for d in pipelines), default=len("repository"))
     table = make_table("pipeline_id", "pipeline_name", "repository")
-    table.align["pipeline_name"] = "l"
-    table.align["repository"] = "l"
-    table.min_width["pipeline_name"] = name_w
-    table.max_width["pipeline_name"] = name_w
-    table.min_width["repository"] = repo_w
-    table.max_width["repository"] = repo_w
+    fix_column_width(table, "pipeline_name", name_w)
+    fix_column_width(table, "repository", repo_w)
 
     for d in pipelines:
         repo = repos.get(d["id"], "-")

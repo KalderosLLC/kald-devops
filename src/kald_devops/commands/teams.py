@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from kald_devops.common import SEMVER_RE, post_to_teams_webhook, print_subcommand_usage
+from kald_devops.common import SEMVER_RE, post_to_teams_webhook, require_env_vars
 
 log = logging.getLogger(__name__)
 
@@ -15,12 +15,7 @@ def cmd_teams_release(args):
     branch_or_tag = os.getenv("BRANCH_OR_TAG")
     teams_webhook_url = os.getenv("TEAMS_WEBHOOK_URL")
 
-    missing = [n for n, v in [("ENVIRONMENTS", environments), ("BRANCH_OR_TAG", branch_or_tag)] if not v]
-    if missing:
-        print_subcommand_usage("teams_release")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("teams_release", ENVIRONMENTS=environments, BRANCH_OR_TAG=branch_or_tag)
 
     log.debug("ENVIRONMENTS:      %s", environments)
     log.debug("BRANCH_OR_TAG:     %s", branch_or_tag)

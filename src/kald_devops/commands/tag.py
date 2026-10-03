@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 
-from kald_devops.common import http_get, http_post, http_patch, make_gh_headers, print_subcommand_usage, extract_gh_error
+from kald_devops.common import http_get, http_post, http_patch, make_gh_headers, require_env_vars, extract_gh_error
 
 log = logging.getLogger(__name__)
 
@@ -148,12 +148,7 @@ def cmd_tag(args):
     github_token = os.getenv("GITHUB_TOKEN")
     raw_repos = os.getenv("REPOSITORIES")
 
-    missing = [n for n, v in [("TAG", name), ("REPOSITORIES", raw_repos), ("GITHUB_TOKEN", github_token)] if v is None]
-    if missing:
-        print_subcommand_usage("tag_repository")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("tag_repository", TAG=name, REPOSITORIES=raw_repos, GITHUB_TOKEN=github_token)
 
     repositories = [r.strip() for r in raw_repos.split(",") if r.strip()]
     if not repositories:

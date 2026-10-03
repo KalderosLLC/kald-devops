@@ -2,13 +2,12 @@
 import logging
 import os
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 import requests
 
-from kald_devops.common import http_get, http_post, make_gh_headers, make_table, print_table, trunc, SEMVER_RE, print_subcommand_usage, extract_gh_error
-from kald_devops.github_actions import fetch_triggered_run_url, poll_gh_run
+from kald_devops.common import http_get, http_post, make_gh_headers, SEMVER_RE, parse_env_list, require_env_vars, extract_gh_error
+from kald_devops.github_actions import fetch_triggered_run_url, poll_gh_run, trigger_and_poll_environments
 
 log = logging.getLogger(__name__)
 
@@ -38,20 +37,9 @@ def cmd_apply_flyway(args):
     github_token = os.getenv("GITHUB_TOKEN")
     branch_or_tag = os.getenv("BRANCH_OR_TAG", "main")
 
-    missing = [n for n, v in [("ENVIRONMENTS", raw_envs), ("GITHUB_TOKEN", github_token)] if not v]
-    if missing:
-        print_subcommand_usage("apply_flyway")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("apply_flyway", ENVIRONMENTS=raw_envs, GITHUB_TOKEN=github_token)
 
-    # Parse and deduplicate environments (preserve order, case-insensitive dedup)
-    seen_env = set()
-    environments_list = []
-    for e in (e.strip() for e in raw_envs.split(",") if e.strip()):
-        if e.lower() not in seen_env:
-            seen_env.add(e.lower())
-            environments_list.append(e)
+    environments_list = parse_env_list(raw_envs)
 
     gh_headers = make_gh_headers(github_token)
 
@@ -68,48 +56,9 @@ def cmd_apply_flyway(args):
         sys.exit(1)
     log.debug("Verified %s '%s' exists in KalderosLLC/phoenix", "tag" if is_tag else "branch", branch_or_tag)
 
-    # Trigger and claim each environment's run one at a time -- see fetch_triggered_run_url's
-    # docstring for why fanning these out concurrently risks swapping run URLs between
-    # environments.
-    results = [_trigger_flyway_env(env, branch_or_tag, gh_headers) for env in environments_list]
-
-    triggered = [(env, url, run_id) for env, url, run_id in results if url]
-    errors    = [env for env, url, run_id in results if url is None]
-
-    for env, url, _ in triggered:
-        log.info("%-20s %s", trunc(f"{env}/{branch_or_tag}", 20), url)
-    if errors:
-        log.warning("%d environment(s) failed to trigger: %s", len(errors), errors)
-    if not triggered:
-        sys.exit(1 if errors else 0)
-
-    log.info("Waiting for %d run(s) to complete...", len(triggered))
-
-    def _poll_flyway(item):
-        env, url, run_id = item
-        if run_id:
-            status, reason = poll_gh_run(gh_headers, "KalderosLLC/phoenix-data-gateway", run_id)
-        else:
-            status, reason = "unknown", "run ID not captured"
-        return env, url, status, reason or "-"
-
-    with ThreadPoolExecutor() as executor:
-        poll_results = list(executor.map(_poll_flyway, triggered))
-
-    poll_results.sort(key=lambda r: r[0].lower())
-    table = make_table("environment", "branch_or_tag", "link", "status", "reason")
-    table.align["environment"]   = "l"
-    table.align["branch_or_tag"] = "l"
-    table.align["link"]          = "l"
-    table.align["status"]        = "l"
-    table.align["reason"]        = "l"
-    any_unsuccessful = bool(errors)
-    for env, url, status, reason in poll_results:
-        if status == "success":
-            log.info("flyway / %s: %s", env, status)
-        else:
-            any_unsuccessful = True
-            log.error("flyway / %s: %s - %s", env, status, reason)
-        table.add_row([env, branch_or_tag, url, status, reason])
-    print_table(table, args)
-    sys.exit(1 if any_unsuccessful else 0)
+    trigger_and_poll_environments(
+        args, environments_list,
+        trigger_fn=lambda env: _trigger_flyway_env(env, branch_or_tag, gh_headers),
+        poll_fn=lambda run_id: poll_gh_run(gh_headers, "KalderosLLC/phoenix-data-gateway", run_id),
+        extra_column="branch_or_tag", extra_value=branch_or_tag, log_tool="flyway",
+    )

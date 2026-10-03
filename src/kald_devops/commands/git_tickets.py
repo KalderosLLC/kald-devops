@@ -9,7 +9,7 @@ import requests
 
 from kald_devops.common import (
     http_get, make_gh_headers, parse_semver, flex_width, make_table, trunc,
-    print_table, print_subcommand_usage, extract_gh_error,
+    print_table, require_env_vars, extract_gh_error,
 )
 
 log = logging.getLogger(__name__)
@@ -101,12 +101,7 @@ def cmd_git_tickets(args):
     from_tag = os.getenv("FROM_TAG")
     github_token = os.getenv("GITHUB_TOKEN")
 
-    missing = [n for n, v in [("REPOSITORY", repository), ("TAG", tag), ("GITHUB_TOKEN", github_token)] if v is None]
-    if missing:
-        print_subcommand_usage("git_tickets")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("git_tickets", REPOSITORY=repository, TAG=tag, GITHUB_TOKEN=github_token)
 
     if "/" not in repository or repository.startswith("/") or repository.endswith("/"):
         log.error("REPOSITORY '%s' must be in the format organization/repo_name (e.g. KalderosLLC/phoenix)", repository)
@@ -194,9 +189,6 @@ def cmd_git_tickets(args):
     summary_w = 60
     authors_w = flex_width(3, jira_w, summary_w)
     table = make_table("jira_id", "summary", "authors")
-    table.align["jira_id"]  = "l"
-    table.align["summary"]  = "l"
-    table.align["authors"]  = "l"
     for jira_id, authors in rows:
         table.add_row([jira_id, trunc(summaries[jira_id], summary_w), trunc(", ".join(authors), authors_w)])
     print_table(table, args)

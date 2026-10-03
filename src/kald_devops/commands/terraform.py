@@ -3,14 +3,13 @@ import logging
 import os
 import re
 import sys
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from kald_devops.common import (
-    http_get, http_post, make_gh_headers, make_table, print_table, trunc,
-    print_subcommand_usage, _fmt_deploy_dt, extract_gh_error,
+    http_get, http_post, make_gh_headers, make_table, print_table,
+    parse_env_list, require_env_vars, _fmt_deploy_dt, extract_gh_error,
 )
-from kald_devops.github_actions import fetch_triggered_run_url, poll_gh_run
+from kald_devops.github_actions import fetch_triggered_run_url, poll_gh_run, trigger_and_poll_environments
 
 log = logging.getLogger(__name__)
 
@@ -101,12 +100,7 @@ def resolve_pr_from_terraform_plan(gh_headers, repo="KalderosLLC/phoenix", workf
 def cmd_calc_pr(args):
     github_token = os.getenv("GITHUB_TOKEN")
 
-    missing = [n for n, v in [("GITHUB_TOKEN", github_token)] if not v]
-    if missing:
-        print_subcommand_usage("calc_pr")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("calc_pr", GITHUB_TOKEN=github_token)
 
     gh_headers = make_gh_headers(github_token)
 
@@ -124,11 +118,6 @@ def cmd_calc_pr(args):
                 break
 
         table = make_table("run", "pr", "status", "created_at", "branch", "picked")
-        table.align["run"]        = "l"
-        table.align["status"]     = "l"
-        table.align["created_at"] = "l"
-        table.align["branch"]     = "l"
-        table.align["picked"]     = "l"
         for run in runs:
             run_url = run.get("html_url", "-")
             status_disp = run.get("conclusion") or run.get("status", "-")
@@ -153,64 +142,15 @@ def cmd_apply_terraform(args):
     raw_envs = os.getenv("ENVIRONMENTS")
     github_token = os.getenv("GITHUB_TOKEN")
 
-    missing = [n for n, v in [("PR", pr), ("ENVIRONMENTS", raw_envs), ("GITHUB_TOKEN", github_token)] if not v]
-    if missing:
-        print_subcommand_usage("apply_terraform")
-        for n in missing:
-            log.error("Missing required environment variable: %s", n)
-        sys.exit(1)
+    require_env_vars("apply_terraform", PR=pr, ENVIRONMENTS=raw_envs, GITHUB_TOKEN=github_token)
 
-    # Parse and deduplicate environments (preserve order, case-insensitive dedup)
-    seen_env = set()
-    environments_list = []
-    for e in (e.strip() for e in raw_envs.split(",") if e.strip()):
-        if e.lower() not in seen_env:
-            seen_env.add(e.lower())
-            environments_list.append(e)
+    environments_list = parse_env_list(raw_envs)
 
     gh_headers = make_gh_headers(github_token)
 
-    # Trigger and claim each environment's run one at a time -- see fetch_triggered_run_url's
-    # docstring for why fanning these out concurrently risks swapping run URLs between
-    # environments.
-    results = [_trigger_terraform_env(env, pr, gh_headers) for env in environments_list]
-
-    triggered = [(env, url, run_id) for env, url, run_id in results if url]
-    errors    = [env for env, url, run_id in results if url is None]
-
-    for env, url, _ in triggered:
-        log.info("%-20s %s", trunc(f"{env}/PR#{pr}", 20), url)
-    if errors:
-        log.warning("%d environment(s) failed to trigger: %s", len(errors), errors)
-    if not triggered:
-        sys.exit(1 if errors else 0)
-
-    log.info("Waiting for %d run(s) to complete...", len(triggered))
-
-    def _poll_terraform(item):
-        env, url, run_id = item
-        if run_id:
-            status, reason = poll_gh_run(gh_headers, "KalderosLLC/phoenix", run_id)
-        else:
-            status, reason = "unknown", "run ID not captured"
-        return env, url, status, reason or "-"
-
-    with ThreadPoolExecutor() as executor:
-        poll_results = list(executor.map(_poll_terraform, triggered))
-
-    poll_results.sort(key=lambda r: r[0].lower())
-    table = make_table("environment", "pr", "link", "status", "reason")
-    table.align["environment"] = "l"
-    table.align["link"]        = "l"
-    table.align["status"]      = "l"
-    table.align["reason"]      = "l"
-    any_unsuccessful = bool(errors)
-    for env, url, status, reason in poll_results:
-        if status == "success":
-            log.info("terraform / %s: %s", env, status)
-        else:
-            any_unsuccessful = True
-            log.error("terraform / %s: %s - %s", env, status, reason)
-        table.add_row([env, pr, url, status, reason])
-    print_table(table, args)
-    sys.exit(1 if any_unsuccessful else 0)
+    trigger_and_poll_environments(
+        args, environments_list,
+        trigger_fn=lambda env: _trigger_terraform_env(env, pr, gh_headers),
+        poll_fn=lambda run_id: poll_gh_run(gh_headers, "KalderosLLC/phoenix", run_id),
+        extra_column="pr", extra_value=pr, log_tool="terraform",
+    )

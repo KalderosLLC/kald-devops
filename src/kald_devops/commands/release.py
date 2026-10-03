@@ -11,9 +11,9 @@ import requests
 
 from kald_devops.common import (
     http_get, http_post, http_patch, http_put, extract_error, resolve_pipeline_tokens,
-    make_table, print_table, trunc, flex_width, _fmt_deploy_dt,
-    organization, project, folder_path, env_sort_key, parse_pipelines_env,
-    print_subcommand_usage, SEMVER_RE,
+    make_table, print_table, fix_column_width, trunc, flex_width, _fmt_deploy_dt,
+    organization, project, folder_path, env_sort_key, parse_pipelines_env, parse_env_list,
+    print_subcommand_usage, require_env_vars, report_success_failure, SEMVER_RE,
 )
 
 log = logging.getLogger(__name__)
@@ -259,13 +259,7 @@ def cmd_list_pipelines(args, headers):
     folder_defs.sort(key=lambda d: d["name"].lower())
 
     raw_envs = os.getenv("ENVIRONMENTS")
-    environments_filter = []
-    if raw_envs:
-        seen_env: set = set()
-        for e in (e.strip() for e in raw_envs.split(",") if e.strip()):
-            if e.lower() not in seen_env:
-                seen_env.add(e.lower())
-                environments_filter.append(e)
+    environments_filter = parse_env_list(raw_envs)
 
     # Phase 1: repos + per-pipeline stage lists
     with ThreadPoolExecutor() as executor:
@@ -301,14 +295,7 @@ def cmd_list_pipelines(args, headers):
             rows.append((d["id"], env, d["name"], repo, version, deployed_at, release_name))
     rows.sort(key=lambda r: (r[2].lower(), env_sort_key(r[1])))
     table = make_table("pipeline_id", "repository", "pipeline_name", "environment", "current_version", "deployed_at", "release_name")
-    table.align["repository"] = "l"
-    table.align["pipeline_name"] = "l"
-    table.align["environment"] = "l"
-    table.align["current_version"] = "l"
-    table.align["deployed_at"] = "l"
-    table.align["release_name"] = "l"
-    table.min_width["repository"] = repo_col_w
-    table.max_width["repository"] = repo_col_w
+    fix_column_width(table, "repository", repo_col_w)
     for pid, env, pname, repo, version, deployed_at, release_name in rows:
         table.add_row([pid, repo, pname, env, version, deployed_at, release_name])
 
@@ -334,8 +321,6 @@ def cmd_list_environments(args, headers):
     log.info("Found %d unique environment(s) across %d pipeline(s)", len(sorted_envs), len(folder_defs))
 
     table = make_table("environment", "pipeline_count")
-    table.align["environment"] = "l"
-    table.align["pipeline_count"] = "l"
     for env, count in sorted_envs:
         table.add_row([env, count])
     print_table(table, args)
@@ -361,13 +346,8 @@ def cmd_list_recent_builds(args, headers):
     name_col_w = max((len(d["name"]) for d in folder_defs), default=len("pipeline_name"))
     repo_col_w = max((len(r) for r in repos), default=len("repository"))
     table = make_table("pipeline_id", "pipeline_name", "repository", "recent_tags_and_branches")
-    table.align["pipeline_name"] = "l"
-    table.align["repository"] = "l"
-    table.align["recent_tags_and_branches"] = "l"
-    table.min_width["pipeline_name"] = name_col_w
-    table.max_width["pipeline_name"] = name_col_w
-    table.min_width["repository"] = repo_col_w
-    table.max_width["repository"] = repo_col_w
+    fix_column_width(table, "pipeline_name", name_col_w)
+    fix_column_width(table, "repository", repo_col_w)
     for d, repo, refs in zip(folder_defs, repos, recent_refs):
         table.add_row([d["id"], d["name"], repo, refs])
 
@@ -562,12 +542,7 @@ def cmd_deploy(args, headers):
     branch_or_tag = os.getenv("BRANCH_OR_TAG")
     raw_envs = os.getenv("ENVIRONMENTS")
 
-    missing = [name for name, val in [("BRANCH_OR_TAG", branch_or_tag), ("ENVIRONMENTS", raw_envs)] if not val]
-    if missing:
-        print_subcommand_usage("deploy_pipelines")
-        for name in missing:
-            log.error("Missing required environment variable: %s", name)
-        sys.exit(1)
+    require_env_vars("deploy_pipelines", BRANCH_OR_TAG=branch_or_tag, ENVIRONMENTS=raw_envs)
 
     if SEMVER_RE.match(branch_or_tag):
         source_ref = f"refs/tags/{branch_or_tag}"
@@ -576,13 +551,7 @@ def cmd_deploy(args, headers):
         source_ref = f"refs/heads/{branch_or_tag}"
         log.debug("BRANCH_OR_TAG='%s' does not match semver - treating as a branch", branch_or_tag)
 
-    # Parse and deduplicate requested environments (preserve order, case-insensitive dedup)
-    seen_env = set()
-    environments_list = []
-    for e in (e.strip() for e in raw_envs.split(",") if e.strip()):
-        if e.lower() not in seen_env:
-            seen_env.add(e.lower())
-            environments_list.append(e)
+    environments_list = parse_env_list(raw_envs)
 
     all_defs = fetch_release_definitions(headers)
 
@@ -708,12 +677,6 @@ def cmd_deploy(args, headers):
     rel_w  = max((len(r[3]) for r in poll_results), default=len("release"))
     name_w = flex_width(6, id_w, env_w, bot_w, rel_w, len("status"), len("reason"))
     table = make_table("pipeline_id", "environment", "pipeline_name", "branch_or_tag", "release", "status", "reason")
-    table.align["environment"]   = "l"
-    table.align["pipeline_name"] = "l"
-    table.align["branch_or_tag"] = "l"
-    table.align["release"]       = "l"
-    table.align["status"]        = "l"
-    table.align["reason"]        = "l"
     any_unsuccessful = bool(errors)
     for pid, pname, active_version, rname, environment, url, status, reason in poll_results:
         if status == "succeeded":
@@ -828,11 +791,7 @@ def cmd_add_environment_to_pipelines(args, headers):
             log.error("Error processing %s: %s", pipeline_name, str(e))
             failures += 1
 
-    print()
-    print(f"{success} successful, {failures} failed")
-
-    if failures > 0:
-        sys.exit(1)
+    report_success_failure(success, failures)
 
 # =============================================================================
 # Create releases from artifact
@@ -991,8 +950,4 @@ def cmd_create_releases_from_artifact(args, headers):
             log.error("Error processing %s: %s", pipeline_name, str(e))
             failures += 1
 
-    print()
-    print(f"{success} successful, {failures} failed")
-
-    if failures > 0:
-        sys.exit(1)
+    report_success_failure(success, failures)
